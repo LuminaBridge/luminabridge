@@ -1,0 +1,66 @@
+# Rustfmt Configuration for LuminaBridge
+# https://github.com/rust-lang/rustfmt/blob/master/Configurations.md
+
+# Basic formatting
+edition = "2021"
+version = "Two"
+
+# Width constraints
+max_width = 120
+use_small_heuristics = "Max"
+
+# Indentation
+tab_spaces = 4
+hard_tabs = false
+
+# Imports organization
+reorder_imports = true
+reorder_modules = true
+group_imports = "StdExternalCrate"
+imports_granularity = "Crate"
+imports_layout = "Vertical"
+
+# Function formatting
+fn_args_layout = "Tall"
+fn_single_line = false
+where_single_line = false
+
+# Expression formatting
+match_arm_leading_pipes = "Never"
+match_arm_blocks = true
+match_block_trailing_comma = true
+
+# Comment formatting
+normalize_comments = true
+normalize_doc_attributes = true
+wrap_comments = true
+comment_width = 100
+
+# Trailing semicolons
+trailing_semicolon = true
+trailing_comma = "Vertical"
+
+# Blank lines
+blank_lines_upper_bound = 2
+blank_lines_lower_bound = 0
+
+# Spaces
+spaces_around_ranges = false
+space_after_colon = true
+space_before_colon = false
+
+# Braces
+brace_style = "SameLineWhere"
+control_brace_style = "AlwaysSameLine"
+
+# Other
+remove_nested_parens = true
+reorder_impl_items = true
+type_punctuation_density = "Wide"
+use_try_shorthand = true
+use_field_init_shorthand = true
+
+# Unstable features (requires nightly)
+# unstable_features = true
+# format_code_in_doc_comments = true
+# format_strings = true

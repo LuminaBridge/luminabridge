@@ -1,0 +1,58 @@
+# Clippy Configuration for LuminaBridge
+# https://doc.rust-lang.org/nightly/clippy/configuration.html
+
+# Disallowed macros
+disallowed-macros = [
+    "panic",
+    "print",
+    "println",
+]
+
+# Disallowed methods
+disallowed-methods = [
+    { path = "std::unwrap", reason = "Use expect() with a meaningful message instead" },
+    { path = "std::expect", reason = "Use proper error handling with Result instead" },
+]
+
+# Disallowed types
+disallowed-types = [
+    { path = "std::collections::HashMap", reason = "Use fxhash::FxHashMap for better performance" },
+]
+
+# Cyclomatic complexity threshold
+cognitive-complexity-threshold = 30
+
+# Too many arguments threshold
+too-many-arguments-threshold = 7
+
+# Allow certain lints that are too strict
+allow = [
+    "module-name-repetitions",
+    "similar-names",
+]
+
+# Warn on these
+warn = [
+    "clippy::all",
+    "clippy::pedantic",
+    "clippy::nursery",
+]
+
+# Deny these (treat as errors)
+deny = [
+    "clippy::unwrap_used",
+    "clippy::expect_used",
+    "clippy::panic",
+    "clippy::todo",
+    "clippy::unimplemented",
+    "clippy::dbg_macro",
+    "clippy::print_stdout",
+    "clippy::print_stderr",
+    "clippy::unwrap_in_result",
+]
+
+# Specific lint configurations
+# Allow unwrap in tests
+[[disallowed-macros]]
+path = "panic"
+reason = "Use proper error handling"
