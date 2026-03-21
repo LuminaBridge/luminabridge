@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- 光束渐变 -->
+    <linearGradient id="faviconBeam" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#fbbf24;stop-opacity:1"/>
+      <stop offset="50%" style="stop-color:#f59e0b;stop-opacity:1"/>
+      <stop offset="100%" style="stop-color:#f97316;stop-opacity:1"/>
+    </linearGradient>
+    
+    <!-- 背景渐变 -->
+    <linearGradient id="faviconBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0f172a;stop-opacity:1"/>
+      <stop offset="100%" style="stop-color:#1e293b;stop-opacity:1"/>
+    </linearGradient>
+    
+    <!-- 桥梁渐变 -->
+    <linearGradient id="faviconBridge" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#60a5fa;stop-opacity:1"/>
+      <stop offset="50%" style="stop-color:#818cf8;stop-opacity:1"/>
+      <stop offset="100%" style="stop-color:#a78bfa;stop-opacity:1"/>
+    </linearGradient>
+    
+    <!-- 发光滤镜 -->
+    <filter id="faviconGlow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="5" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  
+  <!-- 圆角背景 -->
+  <rect width="512" height="512" rx="80" ry="80" fill="url(#faviconBg)"/>
+  
+  <!-- 桥梁结构（简化版） -->
+  <g transform="translate(100, 256)">
+    <!-- 左桥墩 -->
+    <rect x="0" y="0" width="20" height="120" rx="4" fill="url(#faviconBridge)" opacity="0.8"/>
+    <circle cx="10" cy="0" r="12" fill="url(#faviconBridge)" opacity="0.6" filter="url(#faviconGlow)"/>
+    
+    <!-- 右桥墩 -->
+    <rect x="292" y="0" width="20" height="120" rx="4" fill="url(#faviconBridge)" opacity="0.8"/>
+    <circle cx="302" cy="0" r="12" fill="url(#faviconBridge)" opacity="0.6" filter="url(#faviconGlow)"/>
+    
+    <!-- 桥面（弧形） -->
+    <path d="M 10,10 Q 156,-30 302,10" stroke="url(#faviconBridge)" stroke-width="10" fill="none" stroke-linecap="round" filter="url(#faviconGlow)"/>
+  </g>
+  
+  <!-- 光束穿过 -->
+  <g filter="url(#faviconGlow)">
+    <!-- 主光束 -->
+    <path d="M 80,150 L 380,256" stroke="url(#faviconBeam)" stroke-width="5" fill="none" opacity="0.9"/>
+    
+    <!-- 光束散射 -->
+    <line x1="380" y1="256" x2="450" y2="240" stroke="#fbbf24" stroke-width="3" opacity="0.7"/>
+    <line x1="380" y1="256" x2="460" y2="256" stroke="#fbbf24" stroke-width="3" opacity="0.7"/>
+    <line x1="380" y1="256" x2="450" y2="270" stroke="#fbbf24" stroke-width="3" opacity="0.7"/>
+    
+    <!-- 光点 -->
+    <circle cx="200" cy="190" r="6" fill="#ffffff" filter="url(#faviconGlow)" opacity="0.9"/>
+    <circle cx="280" cy="220" r="5" fill="#ffffff" filter="url(#faviconGlow)" opacity="0.7"/>
+  </g>
+  
+  <!-- 连接节点 -->
+  <g filter="url(#faviconGlow)">
+    <circle cx="65" cy="135" r="9" fill="#1e293b" stroke="#fbbf24" stroke-width="3"/>
+    <circle cx="447" cy="240" r="9" fill="#1e293b" stroke="#fbbf24" stroke-width="3"/>
+    <circle cx="447" cy="271" r="9" fill="#1e293b" stroke="#fbbf24" stroke-width="3"/>
+  </g>
+  
+  <!-- 装饰光晕 -->
+  <circle cx="80" cy="150" r="20" fill="#fbbf24" opacity="0.1" filter="url(#faviconGlow)"/>
+  <circle cx="380" cy="256" r="25" fill="#fbbf24" opacity="0.15" filter="url(#faviconGlow)"/>
+</svg>
