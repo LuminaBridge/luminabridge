@@ -1,0 +1,170 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="800" height="400" viewBox="0 0 800 400" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- 光束渐变 -->
+    <linearGradient id="beamGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#fbbf24;stop-opacity:1"/>
+      <stop offset="50%" style="stop-color:#f59e0b;stop-opacity:1"/>
+      <stop offset="100%" style="stop-color:#f97316;stop-opacity:1"/>
+    </linearGradient>
+    
+    <!-- 背景渐变 -->
+    <linearGradient id="bgGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0f172a;stop-opacity:1"/>
+      <stop offset="100%" style="stop-color:#1e293b;stop-opacity:1"/>
+    </linearGradient>
+    
+    <!-- 桥梁渐变 -->
+    <linearGradient id="bridgeGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#60a5fa;stop-opacity:1"/>
+      <stop offset="50%" style="stop-color:#818cf8;stop-opacity:1"/>
+      <stop offset="100%" style="stop-color:#a78bfa;stop-opacity:1"/>
+    </linearGradient>
+    
+    <!-- 发光滤镜 -->
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="4" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    
+    <!-- 网格图案 -->
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#fbbf24" stroke-width="0.5" opacity="0.05"/>
+    </pattern>
+  </defs>
+  
+  <!-- 背景 -->
+  <rect width="800" height="400" fill="url(#bgGradient)"/>
+  
+  <!-- 装饰网格 -->
+  <rect width="800" height="400" fill="url(#grid)"/>
+  
+  <!-- 光束（从左上到右下） -->
+  <g opacity="0.3">
+    <path d="M 50,50 L 200,200" stroke="#fbbf24" stroke-width="2" stroke-dasharray="5,5">
+      <animate attributeName="stroke-dashoffset" values="10;0" dur="2s" repeatCount="indefinite"/>
+    </path>
+    <path d="M 80,50 L 230,200" stroke="#fbbf24" stroke-width="2" stroke-dasharray="5,5">
+      <animate attributeName="stroke-dashoffset" values="10;0" dur="2s" repeatCount="indefinite" begin="0.2s"/>
+    </path>
+    <path d="M 110,50 L 260,200" stroke="#fbbf24" stroke-width="2" stroke-dasharray="5,5">
+      <animate attributeName="stroke-dashoffset" values="10;0" dur="2s" repeatCount="indefinite" begin="0.4s"/>
+    </path>
+  </g>
+  
+  <!-- 桥梁结构 -->
+  <g transform="translate(150, 180)">
+    <!-- 左桥墩 -->
+    <rect x="0" y="0" width="25" height="100" rx="5" fill="url(#bridgeGradient)" opacity="0.8"/>
+    <circle cx="12.5" cy="0" r="15" fill="url(#bridgeGradient)" opacity="0.6" filter="url(#glow)"/>
+    
+    <!-- 右桥墩 -->
+    <rect x="275" y="0" width="25" height="100" rx="5" fill="url(#bridgeGradient)" opacity="0.8"/>
+    <circle cx="287.5" cy="0" r="15" fill="url(#bridgeGradient)" opacity="0.6" filter="url(#glow)"/>
+    
+    <!-- 桥面（弧形） -->
+    <path d="M 12.5,10 Q 150,-20 287.5,10" stroke="url(#bridgeGradient)" stroke-width="8" fill="none" stroke-linecap="round" filter="url(#glow)">
+      <animate attributeName="stroke-width" values="6;8;6" dur="3s" repeatCount="indefinite"/>
+    </path>
+    
+    <!-- 桥面悬索 -->
+    <line x1="12.5" y1="10" x2="12.5" y2="-10" stroke="#818cf8" stroke-width="2" opacity="0.6"/>
+    <line x1="70" y1="0" x2="70" y2="-15" stroke="#818cf8" stroke-width="2" opacity="0.5"/>
+    <line x1="127.5" y1="-15" x2="127.5" y2="-25" stroke="#818cf8" stroke-width="2" opacity="0.4"/>
+    <line x1="185" y1="-15" x2="185" y2="-25" stroke="#818cf8" stroke-width="2" opacity="0.5"/>
+    <line x1="242.5" y1="-10" x2="242.5" y2="-15" stroke="#818cf8" stroke-width="2" opacity="0.6"/>
+    <line x1="287.5" y1="10" x2="287.5" y2="-10" stroke="#818cf8" stroke-width="2" opacity="0.6"/>
+  </g>
+  
+  <!-- 光束穿过桥梁（核心视觉） -->
+  <g filter="url(#glow)">
+    <!-- 主光束 -->
+    <path d="M 100,120 L 450,200" stroke="url(#beamGradient)" stroke-width="4" fill="none" opacity="0.9">
+      <animate attributeName="opacity" values="0.6;1;0.6" dur="2s" repeatCount="indefinite"/>
+    </path>
+    
+    <!-- 光束散射 -->
+    <g opacity="0.6">
+      <line x1="450" y1="200" x2="550" y2="180" stroke="#fbbf24" stroke-width="2">
+        <animate attributeName="opacity" values="0.4;0.8;0.4" dur="1.5s" repeatCount="indefinite"/>
+      </line>
+      <line x1="450" y1="200" x2="560" y2="200" stroke="#fbbf24" stroke-width="2">
+        <animate attributeName="opacity" values="0.4;0.8;0.4" dur="1.5s" repeatCount="indefinite" begin="0.3s"/>
+      </line>
+      <line x1="450" y1="200" x2="550" y2="220" stroke="#fbbf24" stroke-width="2">
+        <animate attributeName="opacity" values="0.4;0.8;0.4" dur="1.5s" repeatCount="indefinite" begin="0.6s"/>
+      </line>
+    </g>
+    
+    <!-- 光点动画 -->
+    <circle r="5" fill="#ffffff" filter="url(#glow)">
+      <animateMotion dur="2.5s" repeatCount="indefinite" path="M 100,120 L 450,200"/>
+    </circle>
+    <circle r="4" fill="#ffffff" filter="url(#glow)" opacity="0.8">
+      <animateMotion dur="2.5s" repeatCount="indefinite" path="M 100,120 L 450,200" begin="0.8s"/>
+    </circle>
+    <circle r="3.5" fill="#ffffff" filter="url(#glow)" opacity="0.6">
+      <animateMotion dur="2.5s" repeatCount="indefinite" path="M 100,120 L 450,200" begin="1.6s"/>
+    </circle>
+  </g>
+  
+  <!-- 连接节点（代表 AI 模型） -->
+  <g filter="url(#glow)">
+    <circle cx="80" cy="100" r="8" fill="#1e293b" stroke="#fbbf24" stroke-width="2.5">
+      <animate attributeName="r" values="7;8;7" dur="2s" repeatCount="indefinite"/>
+    </circle>
+    <circle cx="580" cy="160" r="8" fill="#1e293b" stroke="#fbbf24" stroke-width="2.5">
+      <animate attributeName="r" values="7;8;7" dur="2s" repeatCount="indefinite" begin="0.5s"/>
+    </circle>
+    <circle cx="580" cy="240" r="8" fill="#1e293b" stroke="#fbbf24" stroke-width="2.5">
+      <animate attributeName="r" values="7;8;7" dur="2s" repeatCount="indefinite" begin="1s"/>
+    </circle>
+  </g>
+  
+  <!-- 品牌文字 -->
+  <g>
+    <!-- LUMINA -->
+    <text x="420" y="175" 
+          font-family="'Segoe UI', 'Arial', sans-serif" 
+          font-size="42" 
+          font-weight="700" 
+          fill="url(#beamGradient)"
+          letter-spacing="2">
+      LUMINA
+    </text>
+    
+    <!-- BRIDGE -->
+    <text x="420" y="225" 
+          font-family="'Segoe UI', 'Arial', sans-serif" 
+          font-size="42" 
+          font-weight="700" 
+          fill="url(#bridgeGradient)"
+          letter-spacing="2">
+      BRIDGE
+    </text>
+    
+    <!-- 标语 -->
+    <text x="425" y="260" 
+          font-family="'Segoe UI', 'Arial', sans-serif" 
+          font-size="13" 
+          fill="#94a3b8"
+          letter-spacing="1">
+      Illuminating AI Connections
+    </text>
+  </g>
+  
+  <!-- 底部装饰线 -->
+  <line x1="100" y1="350" x2="700" y2="350" stroke="url(#beamGradient)" stroke-width="1.5" opacity="0.4"/>
+  
+  <!-- 版本信息 -->
+  <text x="700" y="375" 
+        font-family="'Segoe UI', 'Arial', sans-serif" 
+        font-size="10" 
+        fill="#64748b"
+        text-anchor="end">
+    LuminaBridge v1.0
+  </text>
+</svg>
