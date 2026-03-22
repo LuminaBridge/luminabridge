@@ -1,7 +1,7 @@
 # LuminaBridge 开发状态
 
-**更新时间**: 2026-03-22 08:15  
-**当前提交**: e8bd258
+**更新时间**: 2026-03-22 08:35  
+**当前提交**: 97081c8
 
 ---
 
@@ -54,6 +54,14 @@
 
 ---
 
+## ✅ 已修复问题
+
+1. **字段名错误** - `user.name` → `user.display_name` (auth/mod.rs, routes/auth.rs)
+2. **缺少导入** - 添加 `serde::Deserialize` 到 db/mod.rs
+3. **JWT Claims 统一** - 统一到 auth 模块，包含 TenantClaims
+4. **循环依赖** - 请求类型移至 types.rs，消除 db → routes 依赖
+5. **模块导入** - 所有 routes 模块正确导入 TokenClaims
+
 ## ⚠️ 待检验/完善
 
 ### 代码检验要点
@@ -62,19 +70,15 @@
    - [ ] 检查 Cargo.toml 依赖版本兼容性
    - [ ] 确认 rust_decimal 特性配置正确
 
-2. **模块引用**
-   - [ ] 验证 routes 模块导入路径正确
-   - [ ] 检查 auth::TokenClaims 与 types::UserClaims 一致性
-
-3. **数据库模型**
+2. **数据库模型**
    - [ ] 确认 FromRow 派生与 sqlx 版本匹配
    - [ ] 验证 Decimal 类型序列化
 
-4. **路由处理器**
+3. **路由处理器**
    - [ ] 检查所有 handler 签名一致性
    - [ ] 验证错误处理流程
 
-5. **认证中间件**
+4. **认证中间件**
    - [ ] JWT 验证逻辑完整性
    - [ ] OAuth 回调处理
 
