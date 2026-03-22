@@ -89,16 +89,15 @@ impl Server {
             .route("/ready", get(ready_check))
             
             // API routes
-            .nest("/api/v1", api_routes())
+            .nest("/api/v1", api_routes(state.clone()))
             
             // OAuth routes
-            .nest("/auth", oauth_routes())
+            .nest("/auth", oauth_routes(state))
             
             // Apply middleware
             .layer(cors)
             .layer(TraceLayer::new_for_http())
             .layer(CompressionLayer::new())
-            .with_state(state)
     }
     
     /// Run the server
@@ -152,20 +151,22 @@ async fn ready_check(State(state): State<AppState>) -> Result<Json<serde_json::V
 
 /// API routes
 /// API 路由
-fn api_routes() -> Router<AppState> {
+fn api_routes(state: AppState) -> Router<AppState> {
     Router::new()
         .route("/chat/completions", post(chat_completions))
         .route("/models", get(list_models))
+        .with_state(state)
 }
 
 /// OAuth routes
 /// OAuth 路由
-fn oauth_routes() -> Router<AppState> {
+fn oauth_routes(state: AppState) -> Router<AppState> {
     Router::new()
         .route("/github/login", get(github_login))
         .route("/github/callback", get(github_callback))
         .route("/discord/login", get(discord_login))
         .route("/discord/callback", get(discord_callback))
+        .with_state(state)
 }
 
 /// Chat completions endpoint (OpenAI-compatible)
@@ -203,7 +204,9 @@ async fn list_models(
 
 /// GitHub OAuth login
 /// GitHub OAuth 登录
-async fn github_login() -> Result<Json<serde_json::Value>> {
+async fn github_login(
+    State(_state): State<AppState>,
+) -> Result<Json<serde_json::Value>> {
     // TODO: Implement GitHub OAuth flow
     Ok(Json(json!({
         "authorize_url": "https://github.com/login/oauth/authorize"
@@ -212,7 +215,9 @@ async fn github_login() -> Result<Json<serde_json::Value>> {
 
 /// GitHub OAuth callback
 /// GitHub OAuth 回调
-async fn github_callback() -> Result<Json<serde_json::Value>> {
+async fn github_callback(
+    State(_state): State<AppState>,
+) -> Result<Json<serde_json::Value>> {
     // TODO: Implement GitHub OAuth callback
     Ok(Json(json!({
         "status": "authenticated"
@@ -221,7 +226,9 @@ async fn github_callback() -> Result<Json<serde_json::Value>> {
 
 /// Discord OAuth login
 /// Discord OAuth 登录
-async fn discord_login() -> Result<Json<serde_json::Value>> {
+async fn discord_login(
+    State(_state): State<AppState>,
+) -> Result<Json<serde_json::Value>> {
     // TODO: Implement Discord OAuth flow
     Ok(Json(json!({
         "authorize_url": "https://discord.com/api/oauth2/authorize"
@@ -230,7 +237,9 @@ async fn discord_login() -> Result<Json<serde_json::Value>> {
 
 /// Discord OAuth callback
 /// Discord OAuth 回调
-async fn discord_callback() -> Result<Json<serde_json::Value>> {
+async fn discord_callback(
+    State(_state): State<AppState>,
+) -> Result<Json<serde_json::Value>> {
     // TODO: Implement Discord OAuth callback
     Ok(Json(json!({
         "status": "authenticated"

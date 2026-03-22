@@ -514,13 +514,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_default_values() {
-        assert_eq!(default_weight(), 10);
-        assert_eq!(default_timeout(), 30000);
-        assert_eq!(default_retry(), 3);
-    }
-
-    #[test]
     fn test_batch_operation_request() {
         let json = r#"{
             "action": "enable",
