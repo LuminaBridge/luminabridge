@@ -15,8 +15,11 @@ pub mod auth;
 pub mod config;
 pub mod db;
 pub mod error;
+pub mod middleware;
 pub mod relay;
+pub mod routes;
 pub mod server;
+pub mod types;
 
 // Re-export commonly used types
 pub use error::{Error, Result};

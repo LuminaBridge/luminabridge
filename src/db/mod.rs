@@ -840,6 +840,75 @@ impl Database {
         
         Ok(())
     }
+    
+    /// Get channels for a specific model (for relay channel selection)
+    /// 获取特定模型的渠道（用于中继渠道选择）
+    pub async fn get_channels_for_model(&self, tenant_id: i64, model: &str) -> Result<Vec<Channel>> {
+        let channels = sqlx::query_as::<_, Channel>(
+            r#"SELECT * FROM channels 
+               WHERE tenant_id = $1 
+               AND status = 'active'
+               AND models @> $2
+               ORDER BY priority DESC, weight DESC, created_at ASC"#
+        )
+        .bind(tenant_id)
+        .bind(serde_json::json!([model]))
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| Error::Database(e))?;
+        
+        Ok(channels)
+    }
+    
+    /// Get all active channels for a tenant
+    /// 获取租户的所有活跃渠道
+    pub async fn get_active_channels(&self, tenant_id: i64) -> Result<Vec<Channel>> {
+        let channels = sqlx::query_as::<_, Channel>(
+            "SELECT * FROM channels WHERE tenant_id = $1 AND status = 'active' ORDER BY created_at"
+        )
+        .bind(tenant_id)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| Error::Database(e))?;
+        
+        Ok(channels)
+    }
+    
+    /// Create usage stat record
+    /// 创建用量统计记录
+    pub async fn create_usage_stat(
+        &self,
+        tenant_id: i64,
+        user_id: Option<i64>,
+        channel_id: Option<i64>,
+        model: Option<String>,
+        prompt_tokens: i64,
+        completion_tokens: i64,
+        total_tokens: i64,
+        cost: rust_decimal::Decimal,
+        status: Option<String>,
+        latency_ms: Option<i32>,
+    ) -> Result<()> {
+        sqlx::query(
+            r#"INSERT INTO usage_stats 
+               (tenant_id, user_id, channel_id, model, prompt_tokens, completion_tokens, total_tokens, cost, status, latency_ms, created_at)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())"#
+        )
+        .bind(tenant_id)
+        .bind(user_id)
+        .bind(channel_id)
+        .bind(model)
+        .bind(prompt_tokens)
+        .bind(completion_tokens)
+        .bind(total_tokens)
+        .bind(cost)
+        .bind(status)
+        .bind(latency_ms)
+        .execute(&self.pool)
+        .await?;
+        
+        Ok(())
+    }
 }
 
 // ============================================================================
@@ -847,6 +916,18 @@ impl Database {
 // ============================================================================
 
 impl Database {
+    /// Find token by key
+    /// 按密钥查找令牌
+    pub async fn find_token_by_key(&self, key: &str) -> Result<Option<Token>> {
+        let token = sqlx::query_as::<_, Token>("SELECT * FROM tokens WHERE key = $1")
+            .bind(key)
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(|e| Error::Database(e))?;
+        
+        Ok(token)
+    }
+    
     /// Find token by ID
     /// 按 ID 查找令牌
     pub async fn find_token(&self, id: i64) -> Result<Option<Token>> {
@@ -951,6 +1032,90 @@ impl Database {
             .await?;
         
         Ok(())
+    }
+    
+    /// Update token usage
+    /// 更新令牌用量
+    pub async fn update_token_usage(
+        &self,
+        token_id: i64,
+        tokens_used: i64,
+    ) -> Result<Token> {
+        let token = sqlx::query_as::<_, Token>(
+            r#"UPDATE tokens 
+               SET quota_used = quota_used + $2, 
+                   last_used_at = NOW(),
+                   updated_at = NOW()
+               WHERE id = $1
+               RETURNING *"#
+        )
+        .bind(token_id)
+        .bind(tokens_used)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| Error::Database(e))?;
+        
+        Ok(token)
+    }
+    
+    /// Check token quota
+    /// 检查令牌配额
+    pub async fn check_token_quota(
+        &self,
+        token_id: i64,
+        tokens_needed: i64,
+    ) -> Result<bool> {
+        let token = self.find_token(token_id).await?
+            .ok_or(Error::TokenNotFound)?;
+        
+        // If no quota limit, allow
+        let quota_limit = match token.quota_limit {
+            Some(limit) => limit,
+            None => return Ok(true),
+        };
+        
+        // Check if quota_used + tokens_needed <= quota_limit
+        Ok(token.quota_used + tokens_needed <= quota_limit)
+    }
+    
+    /// Validate token access to a model
+    /// 验证令牌对模型的访问权限
+    pub async fn validate_token_access(
+        &self,
+        token_id: i64,
+        model: &str,
+    ) -> Result<bool> {
+        let token = self.find_token(token_id).await?
+            .ok_or(Error::TokenNotFound)?;
+        
+        // If no model restrictions, allow
+        let allowed_models = match &token.allowed_models {
+            Some(models) => models,
+            None => return Ok(true),
+        };
+        
+        if let Some(model_array) = allowed_models.as_array() {
+            for model_value in model_array {
+                if let Some(allowed_model) = model_value.as_str() {
+                    // Exact match
+                    if allowed_model == model {
+                        return Ok(true);
+                    }
+                    
+                    // Wildcard match (e.g., "gpt-*" matches "gpt-3.5-turbo")
+                    if allowed_model.ends_with('*') {
+                        let prefix = &allowed_model[..allowed_model.len() - 1];
+                        if model.starts_with(prefix) {
+                            return Ok(true);
+                        }
+                    }
+                }
+            }
+            return Ok(false);
+        }
+        
+        // If allowed_models is null or empty, allow all
+        Ok(true)
     }
 }
 

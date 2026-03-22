@@ -74,6 +74,15 @@ rust_decimal = { version = "1.33", features = ["serde"] }
 # Async trait macro
 async-trait = "0.1"
 
+# Random number generation (for load balancing)
+rand = "0.8"
+
+# Futures utilities
+futures-util = "0.3"
+
+# Stream utilities
+tokio-stream = { version = "0.1", features = ["sync"] }
+
 [dev-dependencies]
 # Testing
 tokio-test = "0.4"

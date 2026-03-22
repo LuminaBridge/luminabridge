@@ -122,14 +122,13 @@ async fn login(
     }
     
     // Find user by email
-    let user_repo = UserRepository::new(&state.db);
-    let user = user_repo.find_by_email(&payload.email).await?
-        .ok_or_else(|| Error::Auth("Invalid credentials".to_string()))?;
+    let user = state.db.find_user_by_email(&payload.email).await?
+        .ok_or_else(|| Error::InvalidCredentials)?;
     
-    // Verify password
-    // Note: In production, use argon2 or bcrypt for password verification
-    if !verify_password(&payload.password, &user.password_hash)? {
-        return Err(Error::Auth("Invalid credentials".to_string()));
+    // Verify password using argon2
+    let password_valid = verify_password(&payload.password, &user.password_hash.unwrap_or_default())?;
+    if !password_valid {
+        return Err(Error::InvalidCredentials);
     }
     
     // Check user status
@@ -145,6 +144,9 @@ async fn login(
     
     // Generate refresh token
     let refresh_token = generate_refresh_token(user.id)?;
+    
+    // Update last login time
+    update_last_login(&state.db, user.id).await?;
     
     info!("User {} logged in successfully", user.email);
     
@@ -190,19 +192,21 @@ async fn refresh_token(
     info!("Token refresh requested");
     
     // Validate refresh token
-    // In production, verify the refresh token signature and check expiration
     if payload.refresh_token.is_empty() {
-        return Err(Error::Auth("Refresh token is required".to_string()));
+        return Err(Error::TokenInvalid);
     }
     
-    // For now, extract user ID from refresh token (simplified)
-    // In production, you would decode and validate the refresh token
+    // Extract user ID from refresh token
     let user_id = extract_user_id_from_refresh_token(&payload.refresh_token)?;
     
     // Get user from database
-    let user_repo = UserRepository::new(&state.db);
-    let user = user_repo.find_by_id(user_id).await?
+    let user = state.db.find_user(user_id).await?
         .ok_or_else(|| Error::Auth("User not found".to_string()))?;
+    
+    // Check user status
+    if user.status != "active" {
+        return Err(Error::Auth("User account is not active".to_string()));
+    }
     
     // Create auth service
     let auth_service = AuthService::new(state.config.oauth.clone());
@@ -253,16 +257,15 @@ async fn register(
     }
     
     // Check if user already exists
-    let user_repo = UserRepository::new(&state.db);
-    if user_repo.find_by_email(&payload.email).await?.is_some() {
-        return Err(Error::Auth("User already exists".to_string()));
+    if state.db.find_user_by_email(&payload.email).await?.is_some() {
+        return Err(Error::UserAlreadyExists);
     }
     
-    // Hash password
+    // Hash password using argon2
     let password_hash = hash_password(&payload.password)?;
     
-    // Create user
-    let user = user_repo.create_with_password(
+    // Create user with default tenant ID = 1
+    let user = state.db.create_with_password(
         &payload.email,
         &payload.display_name.unwrap_or_else(|| payload.email.clone()),
         &password_hash,
@@ -319,44 +322,59 @@ async fn github_callback(
 ) -> Result<ResponseJson<SuccessResponse<LoginResponse>>> {
     info!("GitHub OAuth callback received");
     
+    // Check for OAuth error
+    if let Some(error) = params.error {
+        return Err(Error::OAuthFailed(format!("OAuth error: {}", error)));
+    }
+    
     let auth_service = AuthService::new(state.config.oauth.clone());
     
     let provider = auth_service.get_provider("github")
-        .ok_or_else(|| Error::Auth("GitHub OAuth is not configured".to_string()))?;
+        .ok_or_else(|| Error::OAuthFailed("GitHub OAuth is not configured".to_string()))?;
     
     // Exchange code for token
-    let token_response = provider.exchange_code(&params.code).await?;
+    let token_response = provider.exchange_code(&params.code).await
+        .map_err(|e| Error::OAuthFailed(format!("Failed to exchange code: {}", e)))?;
     
     // Get user info
-    let user_info = provider.get_user_info(&token_response.access_token).await?;
+    let user_info = provider.get_user_info(&token_response.access_token).await
+        .map_err(|e| Error::OAuthFailed(format!("Failed to get user info: {}", e)))?;
     
     // Find or create user
-    let user_repo = UserRepository::new(&state.db);
-    let user = match user_repo.find_by_oauth("github", &user_info.provider_id).await? {
-        Some(existing_user) => existing_user,
+    let user = match state.db.find_user_by_oauth("github", &user_info.provider_id).await? {
+        Some(existing_user) => {
+            info!("Existing GitHub user found: {}", existing_user.email);
+            existing_user
+        },
         None => {
             // Check if email already exists
-            if let Some(existing) = user_repo.find_by_email(&user_info.email).await? {
+            if let Some(existing) = state.db.find_user_by_email(&user_info.email).await? {
                 // Link OAuth account to existing user
-                user_repo.link_oauth_account(
+                state.db.link_oauth_account(
                     existing.id,
                     "github",
                     &user_info.provider_id,
                     &token_response.access_token,
                 ).await?;
+                info!("Linked GitHub to existing user: {}", existing.email);
                 existing
             } else {
                 // Create new user
-                user_repo.create_with_oauth(
+                let new_user = state.db.create_with_oauth(
                     &user_info.email,
                     &user_info.name,
                     "github",
                     &user_info.provider_id,
                     &token_response.access_token,
-                ).await?
+                ).await?;
+                info!("Created new GitHub user: {}", new_user.email);
+                new_user
             }
         }
     };
+    
+    // Update last login
+    update_last_login(&state.db, user.id).await?;
     
     // Generate JWT token
     let token = auth_service.generate_token(&user)?;
@@ -398,41 +416,59 @@ async fn discord_callback(
 ) -> Result<ResponseJson<SuccessResponse<LoginResponse>>> {
     info!("Discord OAuth callback received");
     
+    // Check for OAuth error
+    if let Some(error) = params.error {
+        return Err(Error::OAuthFailed(format!("OAuth error: {}", error)));
+    }
+    
     let auth_service = AuthService::new(state.config.oauth.clone());
     
     let provider = auth_service.get_provider("discord")
-        .ok_or_else(|| Error::Auth("Discord OAuth is not configured".to_string()))?;
+        .ok_or_else(|| Error::OAuthFailed("Discord OAuth is not configured".to_string()))?;
     
     // Exchange code for token
-    let token_response = provider.exchange_code(&params.code).await?;
+    let token_response = provider.exchange_code(&params.code).await
+        .map_err(|e| Error::OAuthFailed(format!("Failed to exchange code: {}", e)))?;
     
     // Get user info
-    let user_info = provider.get_user_info(&token_response.access_token).await?;
+    let user_info = provider.get_user_info(&token_response.access_token).await
+        .map_err(|e| Error::OAuthFailed(format!("Failed to get user info: {}", e)))?;
     
     // Find or create user
-    let user_repo = UserRepository::new(&state.db);
-    let user = match user_repo.find_by_oauth("discord", &user_info.provider_id).await? {
-        Some(existing_user) => existing_user,
+    let user = match state.db.find_user_by_oauth("discord", &user_info.provider_id).await? {
+        Some(existing_user) => {
+            info!("Existing Discord user found: {}", existing_user.email);
+            existing_user
+        },
         None => {
-            if let Some(existing) = user_repo.find_by_email(&user_info.email).await? {
-                user_repo.link_oauth_account(
+            // Check if email already exists
+            if let Some(existing) = state.db.find_user_by_email(&user_info.email).await? {
+                // Link OAuth account to existing user
+                state.db.link_oauth_account(
                     existing.id,
                     "discord",
                     &user_info.provider_id,
                     &token_response.access_token,
                 ).await?;
+                info!("Linked Discord to existing user: {}", existing.email);
                 existing
             } else {
-                user_repo.create_with_oauth(
+                // Create new user
+                let new_user = state.db.create_with_oauth(
                     &user_info.email,
                     &user_info.name,
                     "discord",
                     &user_info.provider_id,
                     &token_response.access_token,
-                ).await?
+                ).await?;
+                info!("Created new Discord user: {}", new_user.email);
+                new_user
             }
         }
     };
+    
+    // Update last login
+    update_last_login(&state.db, user.id).await?;
     
     // Generate JWT token
     let token = auth_service.generate_token(&user)?;
@@ -534,6 +570,16 @@ fn generate_oauth_state() -> String {
     Uuid::new_v4().to_string()
 }
 
+/// Update user's last login timestamp
+/// 更新用户最后登录时间戳
+async fn update_last_login(db: &crate::db::Database, user_id: i64) -> Result<()> {
+    sqlx::query("UPDATE users SET last_login_at = NOW() WHERE id = $1")
+        .bind(user_id)
+        .execute(db.pool())
+        .await?;
+    Ok(())
+}
+
 /// Legacy OAuth handlers for backward compatibility
 /// 传统 OAuth 处理器用于向后兼容
 pub async fn github_login(
@@ -565,6 +611,10 @@ pub async fn discord_callback_legacy(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::auth::{AuthService, TenantClaims};
+    use crate::config::OAuthConfig;
+    use crate::db::User;
+    use chrono::Utc;
 
     #[test]
     fn test_password_hashing() {
@@ -585,5 +635,204 @@ mod tests {
         let token = "rt_456_abc-def-ghi";
         let user_id = extract_user_id_from_refresh_token(token).unwrap();
         assert_eq!(user_id, 456);
+    }
+
+    #[test]
+    fn test_extract_user_id_invalid_format() {
+        // Missing prefix
+        let result = extract_user_id_from_refresh_token("invalid_456_abc");
+        assert!(result.is_err());
+        
+        // Too few parts
+        let result = extract_user_id_from_refresh_token("rt_456");
+        assert!(result.is_err());
+        
+        // Invalid user ID
+        let result = extract_user_id_from_refresh_token("rt_abc_def-ghi");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_user_dto_from_user() {
+        let user = User {
+            id: 1,
+            tenant_id: 1,
+            email: "test@example.com".to_string(),
+            password_hash: None,
+            display_name: Some("Test User".to_string()),
+            avatar_url: Some("https://example.com/avatar.png".to_string()),
+            role: "admin".to_string(),
+            status: "active".to_string(),
+            oauth_provider: None,
+            oauth_id: None,
+            last_login_at: None,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
+        
+        let dto = UserDTO::from(&user);
+        assert_eq!(dto.id, 1);
+        assert_eq!(dto.email, "test@example.com");
+        assert_eq!(dto.display_name, Some("Test User".to_string()));
+        assert_eq!(dto.role, "admin");
+    }
+
+    #[test]
+    fn test_login_request_deserialization() {
+        let json = r#"{"email": "test@example.com", "password": "secret123", "remember_me": true}"#;
+        let req: LoginRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.email, "test@example.com");
+        assert_eq!(req.password, "secret123");
+        assert!(req.remember_me);
+    }
+
+    #[test]
+    fn test_register_request_deserialization() {
+        let json = r#"{"email": "new@example.com", "password": "secret123", "display_name": "New User"}"#;
+        let req: RegisterRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.email, "new@example.com");
+        assert_eq!(req.display_name, Some("New User".to_string()));
+    }
+
+    #[test]
+    fn test_oauth_callback_params() {
+        let json = r#"{"code": "auth_code_123", "state": "state_abc"}"#;
+        let params: OAuthCallbackParams = serde_json::from_str(json).unwrap();
+        assert_eq!(params.code, "auth_code_123");
+        assert_eq!(params.state, Some("state_abc".to_string()));
+        assert!(params.error.is_none());
+    }
+
+    #[test]
+    fn test_generate_oauth_state() {
+        let state1 = generate_oauth_state();
+        let state2 = generate_oauth_state();
+        // UUIDs should be unique
+        assert_ne!(state1, state2);
+        // Should be valid UUID format
+        assert!(uuid::Uuid::parse_str(&state1).is_ok());
+    }
+
+    #[test]
+    fn test_auth_service_generate_token() {
+        let config = OAuthConfig {
+            github: None,
+            discord: None,
+            jwt_secret: "test-secret-key-at-least-32-chars-long-for-security".to_string(),
+            token_expiration_secs: 3600,
+        };
+        
+        let auth = AuthService::new(config);
+        let user = User {
+            id: 123,
+            tenant_id: 1,
+            email: "test@example.com".to_string(),
+            password_hash: None,
+            display_name: Some("Test User".to_string()),
+            avatar_url: None,
+            role: "user".to_string(),
+            status: "active".to_string(),
+            oauth_provider: None,
+            oauth_id: None,
+            last_login_at: None,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
+        
+        let token = auth.generate_token(&user).unwrap();
+        assert!(!token.is_empty());
+        assert!(token.split('.').count() == 3); // JWT has 3 parts
+    }
+
+    #[test]
+    fn test_auth_service_validate_token() {
+        let config = OAuthConfig {
+            github: None,
+            discord: None,
+            jwt_secret: "test-secret-key-at-least-32-chars-long-for-security".to_string(),
+            token_expiration_secs: 3600,
+        };
+        
+        let auth = AuthService::new(config.clone());
+        let user = User {
+            id: 456,
+            tenant_id: 1,
+            email: "validate@example.com".to_string(),
+            password_hash: None,
+            display_name: None,
+            avatar_url: None,
+            role: "user".to_string(),
+            status: "active".to_string(),
+            oauth_provider: None,
+            oauth_id: None,
+            last_login_at: None,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
+        
+        let token = auth.generate_token(&user).unwrap();
+        let claims = auth.validate_token(&token).unwrap();
+        
+        assert_eq!(claims.user_id, 456);
+        assert_eq!(claims.email, "validate@example.com");
+        assert_eq!(claims.role, "user");
+    }
+
+    #[test]
+    fn test_auth_service_validate_invalid_token() {
+        let config = OAuthConfig {
+            github: None,
+            discord: None,
+            jwt_secret: "test-secret-key-at-least-32-chars-long-for-security".to_string(),
+            token_expiration_secs: 3600,
+        };
+        
+        let auth = AuthService::new(config);
+        
+        // Invalid token
+        let result = auth.validate_token("invalid.token.here");
+        assert!(result.is_err());
+        
+        // Empty token
+        let result = auth.validate_token("");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_login_response_serialization() {
+        let response = LoginResponse {
+            token: "jwt_token_123".to_string(),
+            refresh_token: "rt_1_abc-def".to_string(),
+            user: UserDTO {
+                id: 1,
+                email: "test@example.com".to_string(),
+                display_name: Some("Test User".to_string()),
+                avatar_url: None,
+                role: "user".to_string(),
+            },
+        };
+        
+        let json = serde_json::to_string(&response).unwrap();
+        assert!(json.contains("jwt_token_123"));
+        assert!(json.contains("test@example.com"));
+    }
+
+    #[test]
+    fn test_success_response_with_login() {
+        let login_resp = LoginResponse {
+            token: "token".to_string(),
+            refresh_token: "refresh".to_string(),
+            user: UserDTO {
+                id: 1,
+                email: "test@example.com".to_string(),
+                display_name: None,
+                avatar_url: None,
+                role: "user".to_string(),
+            },
+        };
+        
+        let success_resp = SuccessResponse::new(login_resp).with_message("登录成功");
+        assert!(success_resp.success);
+        assert_eq!(success_resp.message, Some("登录成功".to_string()));
     }
 }

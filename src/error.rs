@@ -49,6 +49,31 @@ pub enum Error {
     #[error("Authentication error: {0}")]
     Auth(String),
 
+    /// Invalid credentials (email/password)
+    /// 无效凭证（邮箱/密码）
+    #[error("Invalid credentials")]
+    InvalidCredentials,
+
+    /// User already exists
+    /// 用户已存在
+    #[error("User already exists")]
+    UserAlreadyExists,
+
+    /// Token expired
+    /// 令牌已过期
+    #[error("Token expired")]
+    TokenExpired,
+
+    /// Token invalid
+    /// 令牌无效
+    #[error("Token invalid")]
+    TokenInvalid,
+
+    /// OAuth failed
+    /// OAuth 失败
+    #[error("OAuth failed: {0}")]
+    OAuthFailed(String),
+
     /// Rate limiting errors
     /// 速率限制错误
     #[error("Rate limit exceeded: {0}")]
@@ -73,6 +98,31 @@ pub enum Error {
     /// 缓存错误
     #[error("Cache error: {0}")]
     Cache(String),
+
+    /// API Token not found
+    /// API 令牌未找到
+    #[error("Token not found")]
+    TokenNotFound,
+
+    /// API Token quota exceeded
+    /// API 令牌配额超出
+    #[error("Token quota exceeded")]
+    TokenQuotaExceeded,
+
+    /// API Token expired
+    /// API 令牌已过期
+    #[error("Token expired")]
+    TokenExpired,
+
+    /// Model not permitted for this token
+    /// 此令牌不允许访问该模型
+    #[error("Model not permitted")]
+    ModelNotPermitted,
+
+    /// IP not allowed
+    /// IP 不允许
+    #[error("IP address not allowed")]
+    IpNotAllowed,
 }
 
 /// HTTP status code mapping for errors
@@ -89,11 +139,21 @@ impl Error {
             Error::Http(e) => e.status().map(|s| s.as_u16()).unwrap_or(502),
             Error::Server(_) => 500,
             Error::Auth(_) => 401,
+            Error::InvalidCredentials => 401,
+            Error::UserAlreadyExists => 409,
+            Error::TokenExpired => 401,
+            Error::TokenInvalid => 401,
+            Error::OAuthFailed(_) => 400,
             Error::RateLimit(_) => 429,
             Error::Provider(_) => 502,
             Error::Internal(_) => 500,
             Error::Validation(_) => 400,
             Error::Cache(_) => 500,
+            Error::TokenNotFound => 404,
+            Error::TokenQuotaExceeded => 429,
+            Error::TokenExpired => 401,
+            Error::ModelNotPermitted => 403,
+            Error::IpNotAllowed => 403,
         }
     }
 
@@ -145,11 +205,21 @@ impl Error {
             Error::Http(_) => "HTTP_ERROR",
             Error::Server(_) => "SERVER_ERROR",
             Error::Auth(_) => "AUTH_ERROR",
+            Error::InvalidCredentials => "INVALID_CREDENTIALS",
+            Error::UserAlreadyExists => "USER_ALREADY_EXISTS",
+            Error::TokenExpired => "TOKEN_EXPIRED",
+            Error::TokenInvalid => "TOKEN_INVALID",
+            Error::OAuthFailed(_) => "OAUTH_FAILED",
             Error::RateLimit(_) => "RATE_LIMIT_EXCEEDED",
             Error::Provider(_) => "PROVIDER_ERROR",
             Error::Internal(_) => "INTERNAL_ERROR",
             Error::Validation(_) => "VALIDATION_ERROR",
             Error::Cache(_) => "CACHE_ERROR",
+            Error::TokenNotFound => "TOKEN_NOT_FOUND",
+            Error::TokenQuotaExceeded => "TOKEN_QUOTA_EXCEEDED",
+            Error::TokenExpired => "TOKEN_EXPIRED",
+            Error::ModelNotPermitted => "MODEL_NOT_PERMITTED",
+            Error::IpNotAllowed => "IP_NOT_ALLOWED",
         }
     }
 }

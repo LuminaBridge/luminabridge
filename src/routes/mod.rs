@@ -10,6 +10,7 @@ pub mod users;
 pub mod stats;
 pub mod ws;
 pub mod tenant;
+pub mod relay;
 
 use axum::{
     routing::{get, post, put, delete, patch},
@@ -19,6 +20,8 @@ use tower_http::cors::{Any, CorsLayer};
 use tracing::info;
 
 use crate::server::AppState;
+use crate::middleware::auth::{require_auth, optional_auth};
+use crate::middleware::api_key_auth::api_key_auth;
 
 /// Create the API v1 router with all routes
 /// 创建包含所有路由的 API v1 路由器
@@ -31,12 +34,15 @@ use crate::server::AppState;
 ///
 /// * `Router<AppState>` - Configured router
 pub fn api_v1_routes(state: AppState) -> Router<AppState> {
-    info!("Setting up API v1 routes");
+    info!("Setting up API v1 routes with authentication middleware");
     
-    Router::new()
-        // Auth routes
-        .nest("/auth", auth::auth_routes(state.clone()))
-        
+    // Public routes (no auth required)
+    let public_routes = Router::new()
+        // Auth routes - public (login, register, OAuth)
+        .nest("/auth", auth::auth_routes(state.clone()));
+    
+    // Protected routes (auth required)
+    let protected_routes = Router::new()
         // Tenant routes
         .nest("/tenant", tenant::tenant_routes(state.clone()))
         
@@ -51,9 +57,28 @@ pub fn api_v1_routes(state: AppState) -> Router<AppState> {
         
         // Stats routes
         .nest("/stats", stats::stats_routes(state.clone()))
+        .layer(axum::middleware::from_fn_with_state(state.clone(), require_auth));
+    
+    // Relay routes (OpenAI-compatible API) - with API key auth and rate limiting
+    let relay_routes = Router::new()
+        .nest("/v1", relay::relay_routes(state.clone()))
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            api_key_auth,
+        ))
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            crate::middleware::rate_limit_middleware,
+        ));
+    
+    Router::new()
+        .merge(public_routes)
+        .merge(protected_routes)
+        .merge(relay_routes)
         
-        // WebSocket upgrade endpoint
+        // WebSocket upgrade endpoint (optional auth)
         .route("/ws", get(ws::websocket_handler))
+        .layer(axum::middleware::from_fn_with_state(state.clone(), optional_auth))
 }
 
 /// Create the main router with CORS and other middleware

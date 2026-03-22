@@ -1,0 +1,184 @@
+# LuminaBridge Docker Compose Configuration
+# Container orchestration for development and production
+
+version: '3.8'
+
+# =============================================================================
+# Services
+# =============================================================================
+services:
+  # -------------------------------------------------------------------------
+  # PostgreSQL Database
+  # -------------------------------------------------------------------------
+  postgres:
+    image: postgres:15-alpine
+    container_name: luminabridge-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-luminabridge}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-luminabridge_dev_password}
+      POSTGRES_DB: ${POSTGRES_DB:-luminabridge_dev}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d/migrations:ro
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    networks:
+      - luminabridge-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-luminabridge} -d ${POSTGRES_DB:-luminabridge_dev}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # -------------------------------------------------------------------------
+  # Redis Cache
+  # -------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: luminabridge-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    networks:
+      - luminabridge-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+  # -------------------------------------------------------------------------
+  # Backend Application (Rust)
+  # -------------------------------------------------------------------------
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: luminabridge-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      # Server configuration
+      LUMINABRIDGE__SERVER__HOST: 0.0.0.0
+      LUMINABRIDGE__SERVER__PORT: 3000
+      LUMINABRIDGE__SERVER__WORKERS: ${BACKEND_WORKERS:-2}
+      
+      # Database configuration
+      LUMINABRIDGE__DATABASE__URL: postgres://${POSTGRES_USER:-luminabridge}:${POSTGRES_PASSWORD:-luminabridge_dev_password}@postgres:5432/${POSTGRES_DB:-luminabridge_dev}
+      LUMINABRIDGE__DATABASE__MAX_CONNECTIONS: 10
+      LUMINABRIDGE__DATABASE__MIN_CONNECTIONS: 2
+      
+      # Redis configuration
+      LUMINABRIDGE__CACHE__URL: redis://redis:6379
+      LUMINABRIDGE__CACHE__MAX_CONNECTIONS: 10
+      
+      # JWT configuration
+      LUMINABRIDGE__OAUTH__JWT_SECRET: ${JWT_SECRET:-change-this-to-a-secure-random-string-at-least-32-characters}
+      LUMINABRIDGE__OAUTH__TOKEN_EXPIRATION_SECS: 86400
+      
+      # OAuth (optional)
+      LUMINABRIDGE__OAUTH__GITHUB__CLIENT_ID: ${GITHUB_CLIENT_ID:-}
+      LUMINABRIDGE__OAUTH__GITHUB__CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
+      LUMINABRIDGE__OAUTH__GITHUB__REDIRECT_URL: ${GITHUB_REDIRECT_URL:-http://localhost:3000/auth/github/callback}
+      
+      LUMINABRIDGE__OAUTH__DISCORD__CLIENT_ID: ${DISCORD_CLIENT_ID:-}
+      LUMINABRIDGE__OAUTH__DISCORD__CLIENT_SECRET: ${DISCORD_CLIENT_SECRET:-}
+      LUMINABRIDGE__OAUTH__DISCORD__REDIRECT_URL: ${DISCORD_REDIRECT_URL:-http://localhost:3000/auth/discord/callback}
+      
+      # Logging
+      LUMINABRIDGE__LOGGING__LEVEL: ${LOG_LEVEL:-info}
+      LUMINABRIDGE__LOGGING__FORMAT: json
+      
+      # Rate limiting
+      LUMINABRIDGE__RATE_LIMIT__ENABLED: ${RATE_LIMIT_ENABLED:-false}
+      LUMINABRIDGE__RATE_LIMIT__REQUESTS_PER_SEC: 100
+      LUMINABRIDGE__RATE_LIMIT__BURST_SIZE: 50
+    ports:
+      - "${BACKEND_PORT:-3000}:3000"
+    networks:
+      - luminabridge-network
+    volumes:
+      - ./logs:/app/logs
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # -------------------------------------------------------------------------
+  # Frontend Application (Vite + Nginx)
+  # -------------------------------------------------------------------------
+  frontend:
+    build:
+      context: ./luminabridge-web
+      dockerfile: Dockerfile
+    container_name: luminabridge-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "${FRONTEND_PORT:-80}:80"
+    networks:
+      - luminabridge-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # -------------------------------------------------------------------------
+  # pgAdmin (Database Management - Optional)
+  # -------------------------------------------------------------------------
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: luminabridge-pgadmin
+    restart: unless-stopped
+    depends_on:
+      - postgres
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@luminabridge.local}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: 'False'
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    ports:
+      - "${PGADMIN_PORT:-8080}:80"
+    networks:
+      - luminabridge-network
+    profiles:
+      - tools
+
+# =============================================================================
+# Networks
+# =============================================================================
+networks:
+  luminabridge-network:
+    driver: bridge
+    name: luminabridge-network
+
+# =============================================================================
+# Volumes
+# =============================================================================
+volumes:
+  postgres_data:
+    driver: local
+    name: luminabridge-postgres-data
+  redis_data:
+    driver: local
+    name: luminabridge-redis-data
+  pgadmin_data:
+    driver: local
+    name: luminabridge-pgadmin-data
