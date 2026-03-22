@@ -16,8 +16,9 @@ use chrono::{DateTime, Utc};
 
 use crate::server::AppState;
 use crate::error::{Error, Result};
-use crate::types::{SuccessResponse, PaginationParams};
+use crate::types::{SuccessResponse, PaginationParams, UpdateUserRequest};
 use crate::routes::auth::UserDTO;
+use crate::auth::TokenClaims;
 
 /// Create user routes
 /// 创建用户路由
@@ -96,27 +97,6 @@ pub struct UserDetailDTO {
     /// Last login at
     /// 最后登录时间
     pub last_login_at: Option<DateTime<Utc>>,
-}
-
-/// Update user request
-/// 更新用户请求
-#[derive(Debug, Deserialize)]
-pub struct UpdateUserRequest {
-    /// Display name
-    /// 显示名称
-    pub display_name: Option<String>,
-    
-    /// Avatar URL
-    /// 头像 URL
-    pub avatar_url: Option<String>,
-    
-    /// Role
-    /// 角色
-    pub role: Option<String>,
-    
-    /// Status
-    /// 状态
-    pub status: Option<String>,
 }
 
 /// Invite user request

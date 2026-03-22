@@ -17,6 +17,7 @@ use chrono::{DateTime, Utc};
 use crate::server::AppState;
 use crate::error::{Error, Result};
 use crate::types::{SuccessResponse, RealtimeStats};
+use crate::auth::TokenClaims;
 
 /// Create stats routes
 /// 创建统计路由

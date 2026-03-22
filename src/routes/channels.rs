@@ -16,7 +16,7 @@ use chrono::{DateTime, Utc};
 
 use crate::server::AppState;
 use crate::error::{Error, Result};
-use crate::types::{SuccessResponse, ErrorResponse, ErrorCode, PaginationParams, ChannelStatus, ChannelType};
+use crate::types::{SuccessResponse, ErrorResponse, ErrorCode, PaginationParams, ChannelStatus, ChannelType, CreateChannelRequest, UpdateChannelRequest};
 use crate::auth::TokenClaims;
 
 /// Create channel routes
@@ -122,96 +122,6 @@ pub struct ChannelDTO {
     /// Updated at
     /// 更新时间
     pub updated_at: DateTime<Utc>,
-}
-
-/// Create channel request
-/// 创建渠道请求
-#[derive(Debug, Deserialize)]
-pub struct CreateChannelRequest {
-    /// Channel name
-    /// 渠道名称
-    pub name: String,
-    
-    /// Channel type
-    /// 渠道类型
-    pub channel_type: String,
-    
-    /// API key
-    /// API 密钥
-    pub key: String,
-    
-    /// Base URL (optional)
-    /// 基础 URL（可选）
-    pub base_url: Option<String>,
-    
-    /// Supported models
-    /// 支持的模型
-    pub models: Vec<String>,
-    
-    /// Weight for load balancing (default: 10)
-    /// 负载均衡权重（默认：10）
-    #[serde(default = "default_weight")]
-    pub weight: i32,
-    
-    /// Priority (default: 0)
-    /// 优先级（默认：0）
-    #[serde(default)]
-    pub priority: i32,
-    
-    /// Timeout in milliseconds (default: 30000)
-    /// 超时时间（默认：30000）
-    #[serde(default = "default_timeout")]
-    pub timeout_ms: i32,
-    
-    /// Retry count (default: 3)
-    /// 重试次数（默认：3）
-    #[serde(default = "default_retry")]
-    pub retry_count: i32,
-}
-
-fn default_weight() -> i32 { 10 }
-fn default_timeout() -> i32 { 30000 }
-fn default_retry() -> i32 { 3 }
-
-/// Update channel request
-/// 更新渠道请求
-#[derive(Debug, Deserialize)]
-pub struct UpdateChannelRequest {
-    /// Channel name
-    /// 渠道名称
-    pub name: Option<String>,
-    
-    /// API key
-    /// API 密钥
-    pub key: Option<String>,
-    
-    /// Base URL
-    /// 基础 URL
-    pub base_url: Option<String>,
-    
-    /// Supported models
-    /// 支持的模型
-    pub models: Option<Vec<String>>,
-    
-    /// Weight
-    /// 权重
-    pub weight: Option<i32>,
-    
-    /// Priority
-    /// 优先级
-    pub priority: Option<i32>,
-    
-    /// Timeout
-    /// 超时
-    pub timeout_ms: Option<i32>,
-    
-    /// Retry count
-    /// 重试次数
-    pub retry_count: Option<i32>,
-    
-    /// Status
-    /// 状态
-    pub status: Option<String>,
 }
 
 /// Test channel response

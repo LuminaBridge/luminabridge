@@ -16,7 +16,8 @@ use chrono::{DateTime, Utc};
 
 use crate::server::AppState;
 use crate::error::{Error, Result};
-use crate::types::{SuccessResponse, PaginationParams};
+use crate::types::{SuccessResponse, PaginationParams, CreateTokenRequest};
+use crate::auth::TokenClaims;
 
 /// Create token routes
 /// 创建令牌路由
@@ -102,32 +103,6 @@ pub struct TokenDTO {
     /// Updated at
     /// 更新时间
     pub updated_at: DateTime<Utc>,
-}
-
-/// Create token request
-/// 创建令牌请求
-#[derive(Debug, Deserialize)]
-pub struct CreateTokenRequest {
-    /// Token name
-    /// 令牌名称
-    pub name: Option<String>,
-    
-    /// Quota limit (0 = unlimited)
-    /// 配额限制（0 = 无限制）
-    #[serde(default)]
-    pub quota_limit: i64,
-    
-    /// Expire timestamp (Unix timestamp)
-    /// 过期时间（Unix 时间戳）
-    pub expire_at: Option<i64>,
-    
-    /// Allowed models
-    /// 允许的模型
-    pub allowed_models: Option<Vec<String>>,
-    
-    /// Allowed IPs
-    /// 允许的 IP
-    pub allowed_ips: Option<Vec<String>>,
 }
 
 /// Update quota request

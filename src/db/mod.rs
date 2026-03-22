@@ -11,11 +11,7 @@ use serde::Deserialize;
 
 use crate::config::DatabaseConfig;
 use crate::error::{Error, Result};
-use crate::types::{RealtimeStats, PaginationParams};
-use crate::routes::channels::CreateChannelRequest;
-use crate::routes::users::UpdateUserRequest;
-use crate::routes::tenant::UpdateTenantRequest;
-use crate::routes::tokens::CreateTokenRequest;
+use crate::types::{RealtimeStats, PaginationParams, CreateChannelRequest, UpdateUserRequest, UpdateTenantRequest, CreateTokenRequest};
 use chrono::{DateTime, Utc};
 
 pub use models::*;

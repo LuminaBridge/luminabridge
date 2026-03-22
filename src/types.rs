@@ -369,3 +369,157 @@ mod tests {
         assert_eq!(ErrorCode::InternalError.status_code(), 500);
     }
 }
+
+// ============================================================================
+// Request Types (moved from routes to avoid circular dependency)
+// ============================================================================
+
+/// Create channel request
+/// 创建渠道请求
+#[derive(Debug, Deserialize)]
+pub struct CreateChannelRequest {
+    /// Channel name
+    /// 渠道名称
+    pub name: String,
+    
+    /// Channel type
+    /// 渠道类型
+    pub channel_type: String,
+    
+    /// API key
+    /// API 密钥
+    pub key: String,
+    
+    /// Base URL (optional)
+    /// 基础 URL（可选）
+    pub base_url: Option<String>,
+    
+    /// Supported models
+    /// 支持的模型
+    pub models: Vec<String>,
+    
+    /// Weight for load balancing (default: 10)
+    /// 负载均衡权重（默认：10）
+    #[serde(default = "default_weight")]
+    pub weight: i32,
+    
+    /// Priority (default: 0)
+    /// 优先级（默认：0）
+    #[serde(default)]
+    pub priority: i32,
+    
+    /// Timeout in milliseconds (default: 30000)
+    /// 超时时间（默认：30000）
+    #[serde(default = "default_timeout")]
+    pub timeout_ms: i32,
+    
+    /// Retry count (default: 3)
+    /// 重试次数（默认：3）
+    #[serde(default = "default_retry")]
+    pub retry_count: i32,
+}
+
+fn default_weight() -> i32 { 10 }
+fn default_timeout() -> i32 { 30000 }
+fn default_retry() -> i32 { 3 }
+
+/// Update channel request
+/// 更新渠道请求
+#[derive(Debug, Deserialize)]
+pub struct UpdateChannelRequest {
+    /// Channel name
+    /// 渠道名称
+    pub name: Option<String>,
+    
+    /// API key
+    /// API 密钥
+    pub key: Option<String>,
+    
+    /// Base URL
+    /// 基础 URL
+    pub base_url: Option<String>,
+    
+    /// Supported models
+    /// 支持的模型
+    pub models: Option<Vec<String>>,
+    
+    /// Weight
+    /// 权重
+    pub weight: Option<i32>,
+    
+    /// Priority
+    /// 优先级
+    pub priority: Option<i32>,
+    
+    /// Timeout in milliseconds
+    /// 超时时间（毫秒）
+    pub timeout_ms: Option<i32>,
+    
+    /// Retry count
+    /// 重试次数
+    pub retry_count: Option<i32>,
+    
+    /// Status
+    /// 状态
+    pub status: Option<String>,
+}
+
+/// Create token request
+/// 创建令牌请求
+#[derive(Debug, Deserialize)]
+pub struct CreateTokenRequest {
+    /// Token name
+    /// 令牌名称
+    pub name: String,
+    
+    /// Quota limit
+    /// 配额限制
+    #[serde(default)]
+    pub quota_limit: i64,
+    
+    /// Expire at (Unix timestamp)
+    /// 过期时间（Unix 时间戳）
+    pub expire_at: Option<i64>,
+    
+    /// Allowed models
+    /// 允许的模型
+    pub allowed_models: Option<Vec<String>>,
+    
+    /// Allowed IPs
+    /// 允许的 IP
+    pub allowed_ips: Option<Vec<String>>,
+}
+
+/// Update user request
+/// 更新用户请求
+#[derive(Debug, Deserialize)]
+pub struct UpdateUserRequest {
+    /// Display name
+    /// 显示名称
+    pub display_name: Option<String>,
+    
+    /// Avatar URL
+    /// 头像 URL
+    pub avatar_url: Option<String>,
+    
+    /// Role
+    /// 角色
+    pub role: Option<String>,
+    
+    /// Status
+    /// 状态
+    pub status: Option<String>,
+}
+
+/// Update tenant request
+/// 更新租户请求
+#[derive(Debug, Deserialize)]
+pub struct UpdateTenantRequest {
+    /// Tenant name
+    /// 租户名称
+    pub name: Option<String>,
+    
+    /// Settings (JSON)
+    /// 设置（JSON）
+    pub settings: Option<serde_json::Value>,
+}

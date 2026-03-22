@@ -16,7 +16,8 @@ use chrono::{DateTime, Utc};
 
 use crate::server::AppState;
 use crate::error::{Error, Result};
-use crate::types::SuccessResponse;
+use crate::types::{SuccessResponse, UpdateTenantRequest};
+use crate::auth::TokenClaims;
 
 /// Create tenant routes
 /// 创建租户路由
@@ -68,19 +69,6 @@ pub struct TenantDTO {
     /// Updated at
     /// 更新时间
     pub updated_at: DateTime<Utc>,
-}
-
-/// Update tenant request
-/// 更新租户请求
-#[derive(Debug, Deserialize)]
-pub struct UpdateTenantRequest {
-    /// Tenant name
-    /// 租户名称
-    pub name: Option<String>,
-    
-    /// Settings
-    /// 设置
-    pub settings: Option<serde_json::Value>,
 }
 
 /// Tenant usage stats
