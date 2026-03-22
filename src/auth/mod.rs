@@ -284,6 +284,8 @@ impl ApiKeyAuth {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::db::User;
+    use chrono::Utc;
 
     #[test]
     fn test_permission_includes() {
@@ -304,5 +306,91 @@ mod tests {
         
         let auth = AuthService::new(config);
         assert!(auth.get_provider("github").is_none());
+    }
+
+    #[test]
+    fn test_api_key_auth_permissions() {
+        let api_key = ApiKeyAuth::new(
+            "hash123".to_string(),
+            vec![Permission::Write],
+            1,
+        );
+        
+        assert!(api_key.has_permission(Permission::Read));
+        assert!(api_key.has_permission(Permission::Write));
+        assert!(!api_key.has_permission(Permission::Admin));
+    }
+
+    #[test]
+    fn test_jwt_token_generation_and_validation() {
+        let config = OAuthConfig {
+            github: None,
+            discord: None,
+            jwt_secret: "test-secret-key-at-least-32-chars-long".to_string(),
+            token_expiration_secs: 3600,
+        };
+        
+        let auth = AuthService::new(config);
+        
+        // Create a test user
+        let user = User {
+            id: 1,
+            tenant_id: 1,
+            email: "test@example.com".to_string(),
+            password_hash: None,
+            display_name: Some("Test User".to_string()),
+            avatar_url: None,
+            role: "user".to_string(),
+            status: "active".to_string(),
+            oauth_provider: None,
+            oauth_id: None,
+            last_login_at: None,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
+        
+        // Generate token
+        let token = auth.generate_token(&user).expect("Failed to generate token");
+        assert!(!token.is_empty());
+        
+        // Validate token
+        let claims = auth.validate_token(&token).expect("Failed to validate token");
+        assert_eq!(claims.user_id, 1);
+        assert_eq!(claims.email, "test@example.com");
+        assert_eq!(claims.role, "user");
+    }
+
+    #[test]
+    fn test_invalid_jwt_token() {
+        let config = OAuthConfig {
+            github: None,
+            discord: None,
+            jwt_secret: "test-secret-key-at-least-32-chars-long".to_string(),
+            token_expiration_secs: 3600,
+        };
+        
+        let auth = AuthService::new(config);
+        
+        // Try to validate an invalid token
+        let result = auth.validate_token("invalid.token.here");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_oauth_provider_names() {
+        let config = OAuthConfig {
+            github: None,
+            discord: None,
+            jwt_secret: "test-secret".to_string(),
+            token_expiration_secs: 3600,
+        };
+        
+        let auth = AuthService::new(config);
+        
+        // Test case-insensitive provider lookup
+        assert!(auth.get_provider("GitHub").is_none()); // None because no config
+        assert!(auth.get_provider("GITHUB").is_none());
+        assert!(auth.get_provider("discord").is_none());
+        assert!(auth.get_provider("unknown").is_none());
     }
 }

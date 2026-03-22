@@ -34,6 +34,14 @@ pub struct Config {
     /// Rate limiting configuration
     /// 速率限制配置
     pub rate_limit: RateLimitConfig,
+    
+    /// Retry configuration
+    /// 重试配置
+    pub retry: RetryConfig,
+    
+    /// Alert configuration
+    /// 告警配置
+    pub alerts: AlertsConfig,
 }
 
 /// Server configuration
@@ -171,6 +179,133 @@ pub struct RateLimitConfig {
     pub burst_size: u32,
 }
 
+/// Retry configuration
+/// 重试配置
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RetryConfig {
+    /// Enable automatic retry
+    /// 启用自动重试
+    pub enabled: bool,
+    
+    /// Maximum number of retry attempts
+    /// 最大重试次数
+    pub max_retries: u32,
+    
+    /// Base delay in milliseconds for exponential backoff
+    /// 指数退避的基础延迟（毫秒）
+    pub base_delay_ms: u64,
+    
+    /// Maximum delay in milliseconds
+    /// 最大延迟（毫秒）
+    pub max_delay_ms: u64,
+}
+
+/// Alert configuration
+/// 告警配置
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AlertsConfig {
+    /// Enable alerts
+    /// 启用告警
+    pub enabled: bool,
+    
+    /// Alert check interval in seconds
+    /// 告警检查间隔（秒）
+    pub check_interval_secs: u64,
+    
+    /// Error rate threshold for channel alerts (percentage)
+    /// 渠道告警的错误率阈值（百分比）
+    pub error_rate_threshold: f64,
+    
+    /// Latency threshold for channel alerts (milliseconds)
+    /// 渠道告警的延迟阈值（毫秒）
+    pub latency_threshold_ms: u64,
+    
+    /// Balance threshold for channel alerts
+    /// 渠道告警的余额阈值
+    pub balance_threshold: f64,
+    
+    /// Quota usage threshold for token alerts (percentage)
+    /// 令牌告警的配额使用阈值（百分比）
+    pub quota_threshold: f64,
+    
+    // Email notification settings
+    /// Enable email notifications
+    /// 启用邮件通知
+    pub email_enabled: bool,
+    
+    /// SMTP host
+    /// SMTP 主机
+    pub email_smtp_host: String,
+    
+    /// SMTP port
+    /// SMTP 端口
+    pub email_smtp_port: u16,
+    
+    /// SMTP username
+    /// SMTP 用户名
+    pub email_username: String,
+    
+    /// SMTP password
+    /// SMTP 密码
+    pub email_password: String,
+    
+    /// Email recipients (comma-separated)
+    /// 邮件接收者（逗号分隔）
+    pub email_recipients: Vec<String>,
+    
+    // Webhook notification settings
+    /// Enable webhook notifications
+    /// 启用 Webhook 通知
+    pub webhook_enabled: bool,
+    
+    /// Webhook URL
+    /// Webhook URL
+    pub webhook_url: String,
+    
+    // Discord notification settings
+    /// Enable Discord notifications
+    /// 启用 Discord 通知
+    pub discord_enabled: bool,
+    
+    /// Discord webhook URL
+    /// Discord Webhook URL
+    pub discord_webhook_url: String,
+}
+
+impl Default for AlertsConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            check_interval_secs: 300,
+            error_rate_threshold: 10.0,
+            latency_threshold_ms: 5000,
+            balance_threshold: 10.0,
+            quota_threshold: 80.0,
+            email_enabled: false,
+            email_smtp_host: String::new(),
+            email_smtp_port: 587,
+            email_username: String::new(),
+            email_password: String::new(),
+            email_recipients: Vec::new(),
+            webhook_enabled: false,
+            webhook_url: String::new(),
+            discord_enabled: false,
+            discord_webhook_url: String::new(),
+        }
+    }
+}
+
+impl Default for RetryConfig {
+    fn default() -> Self {
+        RetryConfig {
+            enabled: true,
+            max_retries: 3,
+            base_delay_ms: 1000,
+            max_delay_ms: 30000,
+        }
+    }
+}
+
 impl Config {
     /// Load configuration from file and environment
     /// 从文件和环境加载配置
@@ -305,6 +440,8 @@ impl Config {
                 requests_per_sec: 100,
                 burst_size: 50,
             },
+            retry: RetryConfig::default(),
+            alerts: AlertsConfig::default(),
         }
     }
 }

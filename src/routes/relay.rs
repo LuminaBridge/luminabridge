@@ -125,17 +125,8 @@ async fn handle_regular_completion(
     ).into_response())
 }
 
-/// Handle streaming chat completion
-/// 处理流式聊天完成
-/// 
-/// Note: Token usage tracking for streaming responses is not yet implemented.
-/// The token quota is checked before the stream starts, but usage is not updated
-/// after completion. This should be implemented by accumulating token counts from
-/// stream chunks and calling `relay.update_token_usage()` after the stream completes.
-/// 
-/// 注意：流式响应的令牌用量跟踪尚未实现。
-/// 令牌配额在流开始前检查，但完成后不更新用量。
-/// 应该通过累积流块中的令牌计数并在流完成后调用 `relay.update_token_usage()` 来实现。
+/// Handle streaming chat completion with token tracking
+/// 处理带令牌追踪的流式聊天完成
 async fn handle_streaming_completion(
     relay: RelayService,
     request: ChatCompletionRequest,
@@ -144,41 +135,105 @@ async fn handle_streaming_completion(
     token_id: i64,
 ) -> Result<Response> {
     use axum::body::Body;
-    use tokio_stream::wrappers::ReceiverStream;
-    use futures_util::stream::Stream;
+    use futures_util::stream::StreamExt;
     use std::convert::Infallible;
     
-    info!("Handling streaming completion (token usage tracking not implemented for streaming)");
+    info!("Handling streaming completion with token tracking");
     
-    // TODO: Implement token usage tracking for streaming
-    // This would require:
-    // 1. Accumulating token counts from stream chunks
-    // 2. Calling relay.update_token_usage() after stream completes
-    // 3. Handling stream errors gracefully
+    // Get token quota limit
+    let quota_limit = {
+        let token = relay.db.find_token(token_id).await?
+            .ok_or(Error::TokenNotFound)?;
+        token.quota_limit.unwrap_or(0) // 0 = unlimited
+    };
+    
+    // Estimate prompt tokens from request
+    let prompt_tokens = estimate_prompt_tokens(&request);
     
     // Create the stream
     let stream = relay.stream_chat_completion(request, channel, api_key).await?;
     
-    // Convert to SSE stream
-    let sse_stream = stream.map(|chunk_result| {
-        match chunk_result {
-            Ok(chunk) => {
-                let data = serde_json::to_string(&chunk).unwrap_or_default();
-                Ok::<_, Infallible>(format!("data: {}\n\n", data))
+    // Wrap with token tracking
+    let mut streaming_response = crate::relay::StreamingResponse::new(
+        stream,
+        prompt_tokens,
+        quota_limit,
+    );
+    
+    // Create channels for streaming
+    let (tx, rx) = tokio::sync::mpsc::channel(100);
+    
+    // Spawn task to process stream with token tracking
+    let relay_clone = relay.clone();
+    let tenant_id = relay_clone.db.find_token(token_id).await?.map(|t| t.tenant_id).unwrap_or(1);
+    let channel_id = channel.id;
+    let model = streaming_response.stream.as_ref()
+        .map(|_| channel.name.clone())
+        .unwrap_or_else(|| "unknown".to_string());
+    
+    tokio::spawn(async move {
+        let mut stream_error: Option<crate::error::Error> = None;
+        
+        while let Some(chunk_result) = streaming_response.next().await {
+            match chunk_result {
+                Ok(chunk) => {
+                    let data = serde_json::to_string(&chunk).unwrap_or_default();
+                    if tx.send(Ok(format!("data: {}\n\n", data))).await.is_err() {
+                        break; // Client disconnected
+                    }
+                }
+                Err(e) => {
+                    warn!("Stream error: {}", e);
+                    stream_error = Some(e);
+                    let error_data = format!("data: {{\"error\": \"{}\"}}\n\n", e);
+                    let _ = tx.send(Ok(error_data)).await;
+                    break;
+                }
             }
-            Err(e) => {
-                warn!("Stream error: {}", e);
-                Ok(format!("data: {{\"error\": \"{}\"}}\n\n", e))
-            }
+        }
+        
+        // Send [DONE] marker
+        let _ = tx.send(Ok("data: [DONE]\n\n".to_string())).await;
+        
+        // Update token usage and record stats after stream completes
+        if let Some(usage) = streaming_response.get_final_usage() {
+            info!(
+                "Stream completed: prompt={}, completion={}, total={}",
+                usage.prompt_tokens,
+                usage.completion_tokens,
+                usage.total_tokens
+            );
+            
+            // Update token quota
+            let _ = relay_clone.update_token_usage(token_id, usage.total_tokens).await;
+            
+            // Record usage statistics with cost calculation
+            let _ = relay_clone.record_usage(
+                tenant_id,
+                None,
+                channel_id,
+                &model,
+                &crate::relay::types::Usage {
+                    prompt_tokens: usage.prompt_tokens as u32,
+                    completion_tokens: usage.completion_tokens as u32,
+                    total_tokens: usage.total_tokens as u32,
+                },
+                0, // Latency not tracked for streaming
+            ).await;
+        } else if let Some(e) = stream_error {
+            warn!("Stream ended with error: {}", e);
         }
     });
     
-    // Add final [DONE] marker
-    let done_stream = tokio_stream::once(async { Ok::<_, Infallible>("data: [DONE]\n\n".to_string()) });
+    // Convert to SSE stream
+    let sse_stream = tokio_stream::wrappers::ReceiverStream::new(rx);
     
-    let combined_stream = sse_stream.chain(done_stream);
-    
-    let body = Body::from_stream(combined_stream);
+    let body = Body::from_stream(sse_stream.map(|result| {
+        match result {
+            Ok(data) => Ok::<_, Infallible>(data),
+            Err(e) => Ok(format!("data: {{\"error\": \"{}\"}}\n\n", e)),
+        }
+    }));
     
     Ok((
         StatusCode::OK,
@@ -189,6 +244,56 @@ async fn handle_streaming_completion(
         ],
         body,
     ).into_response())
+}
+
+/// Estimate prompt tokens from request
+/// 从请求估算 prompt tokens
+fn estimate_prompt_tokens(request: &ChatCompletionRequest) -> i64 {
+    use crate::relay::stream::count_message_tokens;
+    
+    request.messages.iter()
+        .map(|msg| count_message_tokens(&msg.content))
+        .sum()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Arc;
+    use crate::config::Config;
+    use crate::db::Database;
+
+    #[test]
+    fn test_extract_api_key() {
+        let mut headers = axum::http::HeaderMap::new();
+        headers.insert(
+            header::AUTHORIZATION,
+            "Bearer sk-test123".parse().unwrap(),
+        );
+        
+        let api_key = extract_api_key(&headers).unwrap();
+        assert_eq!(api_key, "sk-test123");
+    }
+
+    #[test]
+    fn test_extract_api_key_missing() {
+        let headers = axum::http::HeaderMap::new();
+        let result = extract_api_key(&headers);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_error_response() {
+        let response = error_response(
+            StatusCode::BAD_REQUEST,
+            "INVALID_REQUEST",
+            "Test error"
+        );
+        
+        let value = response.0;
+        assert!(value["error"]["code"].as_str().is_some());
+        assert!(value["error"]["message"].as_str().is_some());
+    }
 }
 
 /// Text completions endpoint (legacy OpenAI API)

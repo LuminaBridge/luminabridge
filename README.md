@@ -48,9 +48,21 @@ LuminaBridge 是一个基于 Rust 构建的下一代高性能 AI 网关。它通
   - Automatic failover and health checking
   - 自动故障转移和健康检查
 
+- **🔔 Smart Alerting | 智能告警**
+  - Automatic alerts for high error rates, latency, low balance, and quota exhaustion
+  - 自动告警：高错误率、高延迟、余额不足、配额即将用尽
+
 - **🔌 Extensible Architecture | 可扩展架构**
   - Plugin system for custom providers and middleware
   - 用于自定义提供商和中间件的插件系统
+
+- **⚙️ Configurable Retry | 可配置重试**
+  - Exponential backoff with jitter for failed requests
+  - 带抖动的指数退避重试机制
+
+- **💰 Flexible Pricing | 灵活定价**
+  - Built-in pricing for 50+ models, support for custom pricing
+  - 内置 50+ 模型定价，支持自定义定价
 
 ---
 
@@ -262,6 +274,138 @@ LUMINABRIDGE_DATABASE_URL=postgresql://user:password@localhost:5432/luminabridge
 LUMINABRIDGE_OAUTH_GITHUB_CLIENT_ID=your_client_id
 LUMINABRIDGE_OAUTH_GITHUB_CLIENT_SECRET=your_client_secret
 ```
+
+### Retry Configuration | 重试配置
+
+**English:**
+
+Configure automatic retry behavior for failed requests:
+
+```bash
+# Maximum retry attempts
+LUMINABRIDGE__RETRY__MAX_RETRIES=3
+
+# Base delay for exponential backoff (milliseconds)
+LUMINABRIDGE__RETRY__BASE_DELAY_MS=1000
+
+# Maximum delay between retries (milliseconds)
+LUMINABRIDGE__RETRY__MAX_DELAY_MS=30000
+```
+
+**中文:**
+
+配置失败请求的自动重试行为：
+
+```bash
+# 最大重试次数
+LUMINABRIDGE__RETRY__MAX_RETRIES=3
+
+# 指数退避的基础延迟（毫秒）
+LUMINABRIDGE__RETRY__BASE_DELAY_MS=1000
+
+# 重试之间的最大延迟（毫秒）
+LUMINABRIDGE__RETRY__MAX_DELAY_MS=30000
+```
+
+### Pricing Configuration | 定价配置
+
+**English:**
+
+Configure pricing mode and custom pricing:
+
+```bash
+# Pricing mode: builtin (default) or custom
+LUMINABRIDGE__PRICING__MODE=builtin
+
+# Custom pricing file path (only if MODE=custom)
+# LUMINABRIDGE__PRICING__CUSTOM_FILE=config/pricing.json
+```
+
+**Built-in Pricing Models | 内置定价模型:**
+
+- OpenAI: GPT-4, GPT-4 Turbo, GPT-4o, GPT-4o Mini, GPT-3.5-Turbo
+- Anthropic: Claude 3 Opus, Sonnet, Haiku, Claude 3.5 Sonnet
+- Google: Gemini Pro, Gemini 1.5 Pro, Gemini 1.5 Flash
+
+**中文:**
+
+配置定价模式和自定义定价：
+
+```bash
+# 定价模式：builtin（默认）或 custom
+LUMINABRIDGE__PRICING__MODE=builtin
+
+# 自定义定价文件路径（仅当 MODE=custom 时）
+# LUMINABRIDGE__PRICING__CUSTOM_FILE=config/pricing.json
+```
+
+**内置定价模型:**
+
+- OpenAI: GPT-4、GPT-4 Turbo、GPT-4o、GPT-4o Mini、GPT-3.5-Turbo
+- Anthropic: Claude 3 Opus、Sonnet、Haiku、Claude 3.5 Sonnet
+- Google: Gemini Pro、Gemini 1.5 Pro、Gemini 1.5 Flash
+
+### Alert Configuration | 告警配置
+
+**English:**
+
+Configure automatic alert generation for monitoring:
+
+```bash
+# Enable automatic alerts
+LUMINABRIDGE__ALERTS__ENABLED=true
+
+# Alert check interval (seconds)
+LUMINABRIDGE__ALERTS__CHECK_INTERVAL_SECS=300
+
+# Error rate threshold (percentage)
+LUMINABRIDGE__ALERTS__ERROR_RATE_THRESHOLD=10.0
+
+# Latency threshold (milliseconds)
+LUMINABRIDGE__ALERTS__LATENCY_THRESHOLD_MS=5000
+
+# Balance threshold
+LUMINABRIDGE__ALERTS__BALANCE_THRESHOLD=10.0
+
+# Quota usage threshold (percentage)
+LUMINABRIDGE__ALERTS__QUOTA_THRESHOLD=80.0
+```
+
+**Alert Types | 告警类型:**
+
+- **Critical**: Channel error rate > 10%, Token quota > 95% used
+- **Warning**: Channel latency > 5000ms, Channel balance < 10, Token quota > 80% used
+- **Info**: General notifications
+
+**中文:**
+
+配置自动告警生成以进行监控：
+
+```bash
+# 启用自动告警
+LUMINABRIDGE__ALERTS__ENABLED=true
+
+# 告警检查间隔（秒）
+LUMINABRIDGE__ALERTS__CHECK_INTERVAL_SECS=300
+
+# 错误率阈值（百分比）
+LUMINABRIDGE__ALERTS__ERROR_RATE_THRESHOLD=10.0
+
+# 延迟阈值（毫秒）
+LUMINABRIDGE__ALERTS__LATENCY_THRESHOLD_MS=5000
+
+# 余额阈值
+LUMINABRIDGE__ALERTS__BALANCE_THRESHOLD=10.0
+
+# 配额使用阈值（百分比）
+LUMINABRIDGE__ALERTS__QUOTA_THRESHOLD=80.0
+```
+
+**告警类型:**
+
+- **Critical（紧急）**: 渠道错误率 > 10%，令牌配额 > 95% 已用
+- **Warning（警告）**: 渠道延迟 > 5000ms，渠道余额 < 10，令牌配额 > 80% 已用
+- **Info（信息）**: 一般通知
 
 **中文:**
 

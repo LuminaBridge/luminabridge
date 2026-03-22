@@ -28,6 +28,7 @@ pub fn stats_routes(state: AppState) -> Router<AppState> {
         .route("/channels", get(get_channel_stats))
         .route("/models", get(get_model_stats))
         .route("/billing", get(get_billing_stats))
+        .route("/dashboard", get(get_dashboard_stats))
         .with_state(state)
 }
 
@@ -77,6 +78,27 @@ pub struct UsageStatEntry {
     
     /// Cost
     /// 费用
+    pub cost: f64,
+}
+
+/// Usage trend entry (for request trend)
+/// 用量趋势条目（用于请求趋势）
+#[derive(Debug, Serialize)]
+pub struct UsageTrendEntry {
+    /// Date (YYYY-MM-DD)
+    /// 日期（YYYY-MM-DD）
+    pub date: String,
+    
+    /// Requests count
+    /// 请求数
+    pub requests: i64,
+    
+    /// Tokens count
+    /// Token 数
+    pub tokens: i64,
+    
+    /// Cost
+    /// 成本
     pub cost: f64,
 }
 
@@ -286,6 +308,145 @@ async fn get_billing_stats(
     let stats = state.db.get_billing_stats(tenant_id).await?;
     
     Ok(ResponseJson(SuccessResponse::new(stats)))
+}
+
+/// Dashboard statistics
+/// 仪表盘统计
+#[derive(Debug, Serialize)]
+pub struct DashboardStats {
+    /// Total requests
+    /// 总请求数
+    pub total_requests: i64,
+    
+    /// Total tokens
+    /// 总 token 数
+    pub total_tokens: i64,
+    
+    /// Active channels count
+    /// 活跃渠道数
+    pub active_channels: i64,
+    
+    /// Today's revenue
+    /// 今日收入
+    pub today_revenue: f64,
+    
+    /// Request trend (last 7 days)
+    /// 请求趋势（最近 7 天）
+    pub request_trend: Vec<UsageStatEntry>,
+    
+    /// Channel status list
+    /// 渠道状态列表
+    pub channel_status: Vec<ChannelStatusItem>,
+    
+    /// Recent alerts
+    /// 最近告警
+    pub alerts: Vec<AlertItem>,
+}
+
+/// Channel status item
+/// 渠道状态项
+#[derive(Debug, Serialize)]
+pub struct ChannelStatusItem {
+    /// Channel ID
+    /// 渠道 ID
+    pub id: i64,
+    
+    /// Channel name
+    /// 渠道名称
+    pub name: String,
+    
+    /// Channel status
+    /// 渠道状态
+    pub status: String,
+}
+
+/// Alert item
+/// 告警项
+#[derive(Debug, Serialize)]
+pub struct AlertItem {
+    /// Alert ID
+    /// 告警 ID
+    pub id: i64,
+    
+    /// Alert level
+    /// 告警级别
+    pub level: String,
+    
+    /// Alert message
+    /// 告警消息
+    pub message: String,
+    
+    /// Created at
+    /// 创建时间
+    pub created_at: DateTime<Utc>,
+}
+
+/// Get dashboard stats handler
+/// 获取仪表盘统计处理器
+///
+/// GET /api/v1/stats/dashboard
+pub async fn get_dashboard_stats(
+    Extension(claims): Extension<crate::auth::TokenClaims>,
+    State(state): State<AppState>,
+) -> Result<ResponseJson<SuccessResponse<DashboardStats>>> {
+    info!("Getting dashboard stats for tenant {}", claims.tenant.tenant_id);
+    
+    let tenant_id = claims.tenant.tenant_id;
+    
+    // Get total requests and tokens
+    let total_requests = state.db.get_total_requests(tenant_id).await?;
+    let total_tokens = state.db.get_total_tokens(tenant_id).await?;
+    
+    // Get active channels count
+    let active_channels = state.db.get_active_channels_count(tenant_id).await?;
+    
+    // Get today's revenue
+    let today_revenue = state.db.get_today_revenue(tenant_id).await?;
+    
+    // Get request trend (last 7 days)
+    let request_trend = state.db.get_usage_stats(
+        tenant_id,
+        None,
+        None,
+        "day",
+    ).await?;
+    
+    // Get channel status list
+    let channels = state.db.list_channels(tenant_id).await?;
+    let channel_status: Vec<ChannelStatusItem> = channels
+        .into_iter()
+        .map(|c| ChannelStatusItem {
+            id: c.id,
+            name: c.name,
+            status: c.status,
+        })
+        .collect();
+    
+    // Generate alerts based on current metrics
+    let _ = state.db.generate_channel_alerts(tenant_id).await;
+    let _ = state.db.generate_token_alerts(tenant_id).await;
+    
+    // Get recent active alerts
+    let db_alerts = state.db.get_active_alerts(tenant_id, 10).await?;
+    let alerts: Vec<AlertItem> = db_alerts
+        .into_iter()
+        .map(|a| AlertItem {
+            id: a.id,
+            level: a.level,
+            message: a.message,
+            created_at: a.created_at,
+        })
+        .collect();
+    
+    Ok(ResponseJson(SuccessResponse::new(DashboardStats {
+        total_requests,
+        total_tokens,
+        active_channels,
+        today_revenue,
+        request_trend,
+        channel_status,
+        alerts,
+    })))
 }
 
 #[cfg(test)]

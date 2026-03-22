@@ -197,6 +197,29 @@ impl Database {
             "#
         ).execute(&self.pool).await?;
         
+        // Alerts table
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS alerts (
+                id BIGSERIAL PRIMARY KEY,
+                tenant_id BIGINT REFERENCES tenants(id),
+                level VARCHAR(20) NOT NULL,
+                alert_type VARCHAR(50) NOT NULL,
+                message TEXT NOT NULL,
+                entity_id BIGINT,
+                entity_type VARCHAR(50),
+                is_resolved BOOLEAN DEFAULT FALSE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                resolved_at TIMESTAMP
+            )
+            "#
+        ).execute(&self.pool).await?;
+        
+        // Create indexes
+        sqlx::query("CREATE INDEX IF NOT EXISTS idx_alerts_tenant_id ON alerts(tenant_id)").execute(&self.pool).await?;
+        sqlx::query("CREATE INDEX IF NOT EXISTS idx_alerts_is_resolved ON alerts(is_resolved)").execute(&self.pool).await?;
+        sqlx::query("CREATE INDEX IF NOT EXISTS idx_alerts_created_at ON alerts(created_at)").execute(&self.pool).await?;
+        
         // Create indexes
         sqlx::query("CREATE INDEX IF NOT EXISTS idx_users_tenant_id ON users(tenant_id)").execute(&self.pool).await?;
         sqlx::query("CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)").execute(&self.pool).await?;
@@ -1173,20 +1196,144 @@ impl Database {
     /// Get usage stats
     /// 获取用量统计
     pub async fn get_usage_stats(&self, tenant_id: i64, start: Option<&str>, end: Option<&str>, group_by: &str) -> Result<Vec<crate::routes::stats::UsageStatEntry>> {
-        // Simplified implementation
-        Ok(vec![])
+        // Build date format based on group_by
+        let date_format = match group_by {
+            "hour" => "YYYY-MM-DD HH24:MI",
+            "minute" => "YYYY-MM-DD HH24:MI:SS",
+            "week" => "IYYY-IW",
+            _ => "YYYY-MM-DD", // default: day
+        };
+        
+        // Build date range filter
+        let mut date_filter = String::new();
+        if let Some(start_date) = start {
+            date_filter.push_str(&format!(" AND us.created_at >= '{}'", start_date));
+        }
+        if let Some(end_date) = end {
+            date_filter.push_str(&format!(" AND us.created_at <= '{}'", end_date));
+        }
+        
+        let query = format!(
+            r#"SELECT 
+                   TO_CHAR(us.created_at, '{}') as timestamp,
+                   COUNT(*) as requests,
+                   COALESCE(SUM(us.total_tokens), 0) as total_tokens,
+                   COALESCE(SUM(us.prompt_tokens), 0) as prompt_tokens,
+                   COALESCE(SUM(us.completion_tokens), 0) as completion_tokens,
+                   COALESCE(SUM(us.cost), 0) as cost
+               FROM usage_stats us
+               WHERE us.tenant_id = $1{}
+               GROUP BY TO_CHAR(us.created_at, '{}')
+               ORDER BY timestamp"#,
+            date_format, date_filter, date_format
+        );
+        
+        let stats = sqlx::query_as::<_, crate::routes::stats::UsageStatEntry>(&query)
+            .bind(tenant_id)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(|e| Error::Database(e))?;
+        
+        Ok(stats)
+    }
+    
+    /// Get request trend for the last N days
+    /// 获取最近 N 天的请求趋势
+    pub async fn get_request_trend(&self, tenant_id: i64, days: i32) -> Result<Vec<crate::routes::stats::UsageTrendEntry>> {
+        let query = r#"SELECT 
+                           TO_CHAR(DATE(created_at), 'YYYY-MM-DD') as date,
+                           COUNT(*) as requests,
+                           COALESCE(SUM(us.total_tokens), 0) as tokens,
+                           COALESCE(SUM(us.cost), 0) as cost
+                       FROM usage_stats us
+                       WHERE us.tenant_id = $1 
+                       AND created_at >= NOW() - INTERVAL '1 day' * $2
+                       GROUP BY DATE(created_at)
+                       ORDER BY date"#;
+        
+        let trend = sqlx::query_as::<_, crate::routes::stats::UsageTrendEntry>(query)
+            .bind(tenant_id)
+            .bind(days)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(|e| Error::Database(e))?;
+        
+        Ok(trend)
     }
     
     /// Get channel stats
     /// 获取渠道统计
     pub async fn get_channel_stats(&self, tenant_id: i64, start: Option<&str>, end: Option<&str>) -> Result<Vec<crate::routes::stats::ChannelStats>> {
-        Ok(vec![])
+        // Build date range filter
+        let mut date_filter = String::new();
+        if let Some(start_date) = start {
+            date_filter.push_str(&format!(" AND us.created_at >= '{}'", start_date));
+        }
+        if let Some(end_date) = end {
+            date_filter.push_str(&format!(" AND us.created_at <= '{}'", end_date));
+        }
+        
+        let query = format!(
+            r#"SELECT 
+                   c.id as channel_id,
+                   c.name as channel_name,
+                   COUNT(us.id) as requests,
+                   COUNT(CASE WHEN us.status != 'error' THEN 1 END) as success_count,
+                   COUNT(CASE WHEN us.status = 'error' THEN 1 END) as error_count,
+                   COALESCE(AVG(us.latency_ms), 0) as avg_latency_ms,
+                   COALESCE(SUM(us.total_tokens), 0) as total_tokens,
+                   COALESCE(SUM(us.cost), 0) as cost
+               FROM channels c
+               LEFT JOIN usage_stats us ON c.id = us.channel_id{}
+               WHERE c.tenant_id = $1
+               GROUP BY c.id, c.name
+               ORDER BY requests DESC"#,
+            date_filter
+        );
+        
+        let stats = sqlx::query_as::<_, crate::routes::stats::ChannelStats>(&query)
+            .bind(tenant_id)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(|e| Error::Database(e))?;
+        
+        Ok(stats)
     }
     
     /// Get model stats
     /// 获取模型统计
     pub async fn get_model_stats(&self, tenant_id: i64, start: Option<&str>, end: Option<&str>) -> Result<Vec<crate::routes::stats::ModelStats>> {
-        Ok(vec![])
+        // Build date range filter
+        let mut date_filter = String::new();
+        if let Some(start_date) = start {
+            date_filter.push_str(&format!(" AND created_at >= '{}'", start_date));
+        }
+        if let Some(end_date) = end {
+            date_filter.push_str(&format!(" AND created_at <= '{}'", end_date));
+        }
+        
+        let query = format!(
+            r#"SELECT 
+                   model,
+                   COUNT(*) as requests,
+                   COALESCE(SUM(total_tokens), 0) as total_tokens,
+                   COALESCE(SUM(prompt_tokens), 0) as prompt_tokens,
+                   COALESCE(SUM(completion_tokens), 0) as completion_tokens,
+                   COALESCE(SUM(cost), 0) as cost
+               FROM usage_stats
+               WHERE tenant_id = $1 AND model IS NOT NULL{}
+               GROUP BY model
+               ORDER BY requests DESC"#,
+            date_filter
+        );
+        
+        let stats = sqlx::query_as::<_, crate::routes::stats::ModelStats>(&query)
+            .bind(tenant_id)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(|e| Error::Database(e))?;
+        
+        Ok(stats)
     }
     
     /// Get billing stats
@@ -1207,5 +1354,316 @@ impl Database {
             previous_period_cost: 0.0,
             cost_by_category: vec![],
         })
+    }
+    
+    /// Get total requests count
+    /// 获取总请求数
+    pub async fn get_total_requests(&self, tenant_id: i64) -> Result<i64> {
+        let count: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM usage_stats WHERE tenant_id = $1"
+        )
+        .bind(tenant_id)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| Error::Database(e))?;
+        Ok(count)
+    }
+    
+    /// Get total tokens count
+    /// 获取总 token 数
+    pub async fn get_total_tokens(&self, tenant_id: i64) -> Result<i64> {
+        let count: i64 = sqlx::query_scalar(
+            "SELECT COALESCE(SUM(total_tokens), 0) FROM usage_stats WHERE tenant_id = $1"
+        )
+        .bind(tenant_id)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| Error::Database(e))?;
+        Ok(count)
+    }
+    
+    /// Get active channels count
+    /// 获取活跃渠道数
+    pub async fn get_active_channels_count(&self, tenant_id: i64) -> Result<i64> {
+        let count: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM channels WHERE tenant_id = $1 AND status = 'active'"
+        )
+        .bind(tenant_id)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| Error::Database(e))?;
+        Ok(count)
+    }
+    
+    /// Get today's revenue
+    /// 获取今日收入
+    pub async fn get_today_revenue(&self, tenant_id: i64) -> Result<f64> {
+        let revenue: f64 = sqlx::query_scalar(
+            "SELECT COALESCE(SUM(cost), 0) FROM usage_stats WHERE tenant_id = $1 AND DATE(created_at) = CURRENT_DATE"
+        )
+        .bind(tenant_id)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| Error::Database(e))?;
+        Ok(revenue)
+    }
+    
+    /// List all channels for a tenant
+    /// 列出租户的所有渠道
+    pub async fn list_channels(&self, tenant_id: i64) -> Result<Vec<crate::db::Channel>> {
+        let channels = sqlx::query_as::<_, crate::db::Channel>(
+            "SELECT * FROM channels WHERE tenant_id = $1 ORDER BY created_at"
+        )
+        .bind(tenant_id)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| Error::Database(e))?;
+        Ok(channels)
+    }
+}
+
+// ============================================================================
+// Alert Repository Methods
+// ============================================================================
+
+impl Database {
+    /// Get active alerts for dashboard
+    /// 获取仪表盘的活跃告警
+    pub async fn get_active_alerts(&self, tenant_id: i64, limit: i64) -> Result<Vec<crate::db::Alert>> {
+        let alerts = sqlx::query_as::<_, crate::db::Alert>(
+            r#"SELECT * FROM alerts 
+               WHERE tenant_id = $1 AND is_resolved = FALSE 
+               ORDER BY 
+                   CASE level 
+                       WHEN 'critical' THEN 1 
+                       WHEN 'warning' THEN 2 
+                       WHEN 'info' THEN 3 
+                       ELSE 4 
+                   END,
+                   created_at DESC 
+               LIMIT $2"#
+        )
+        .bind(tenant_id)
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| Error::Database(e))?;
+        
+        Ok(alerts)
+    }
+    
+    /// Create a new alert
+    /// 创建新告警
+    pub async fn create_alert(
+        &self,
+        tenant_id: i64,
+        level: &str,
+        alert_type: &str,
+        message: &str,
+        entity_id: Option<i64>,
+        entity_type: Option<&str>,
+    ) -> Result<crate::db::Alert> {
+        let alert = sqlx::query_as::<_, crate::db::Alert>(
+            r#"INSERT INTO alerts (tenant_id, level, alert_type, message, entity_id, entity_type, created_at)
+               VALUES ($1, $2, $3, $4, $5, $6, NOW())
+               RETURNING *"#
+        )
+        .bind(tenant_id)
+        .bind(level)
+        .bind(alert_type)
+        .bind(message)
+        .bind(entity_id)
+        .bind(entity_type)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| Error::Database(e))?;
+        
+        Ok(alert)
+    }
+    
+    /// Resolve an alert
+    /// 解决告警
+    pub async fn resolve_alert(&self, alert_id: i64) -> Result<()> {
+        sqlx::query(
+            "UPDATE alerts SET is_resolved = TRUE, resolved_at = NOW() WHERE id = $1"
+        )
+        .bind(alert_id)
+        .execute(&self.pool)
+        .await?;
+        
+        Ok(())
+    }
+    
+    /// Generate alerts based on channel metrics
+    /// 根据渠道指标生成告警
+    pub async fn generate_channel_alerts(&self, tenant_id: i64) -> Result<Vec<crate::db::Alert>> {
+        let mut new_alerts = Vec::new();
+        
+        // Check for high error rate channels (>10% in last hour)
+        let high_error_channels = sqlx::query_as::<_, (i64, String, f64)>(
+            r#"SELECT c.id, c.name, 
+                      COALESCE(
+                          (SELECT COUNT(*)::float FROM usage_stats us 
+                           WHERE us.channel_id = c.id AND us.status = 'error' 
+                           AND us.created_at > NOW() - INTERVAL '1 hour') * 100.0 /
+                          NULLIF((SELECT COUNT(*)::float FROM usage_stats us 
+                                  WHERE us.channel_id = c.id 
+                                  AND us.created_at > NOW() - INTERVAL '1 hour'), 0),
+                          0
+                      ) as error_rate
+               FROM channels c
+               WHERE c.tenant_id = $1 AND c.status = 'active'
+               HAVING error_rate > 10"#
+        )
+        .bind(tenant_id)
+        .fetch_all(&self.pool)
+        .await
+        .unwrap_or_default();
+        
+        for (channel_id, channel_name, error_rate) in high_error_channels {
+            // Check if alert already exists
+            let exists = sqlx::query_scalar::<_, bool>(
+                "SELECT EXISTS(SELECT 1 FROM alerts WHERE entity_id = $1 AND entity_type = 'channel' AND alert_type = 'high_error_rate' AND is_resolved = FALSE)"
+            )
+            .bind(channel_id)
+            .fetch_one(&self.pool)
+            .await
+            .unwrap_or(false);
+            
+            if !exists {
+                if let Ok(alert) = self.create_alert(
+                    tenant_id,
+                    "critical",
+                    "high_error_rate",
+                    &format!("渠道 '{}' 的错误率超过阈值 ({:.1}%)", channel_name, error_rate),
+                    Some(channel_id),
+                    Some("channel"),
+                ).await {
+                    new_alerts.push(alert);
+                }
+            }
+        }
+        
+        // Check for high latency channels (>5000ms average in last hour)
+        let high_latency_channels = sqlx::query_as::<_, (i64, String, f64)>(
+            r#"SELECT c.id, c.name, 
+                      COALESCE(
+                          (SELECT AVG(us.latency_ms) FROM usage_stats us 
+                           WHERE us.channel_id = c.id 
+                           AND us.created_at > NOW() - INTERVAL '1 hour'),
+                          0
+                      ) as avg_latency
+               FROM channels c
+               WHERE c.tenant_id = $1 AND c.status = 'active'
+               HAVING avg_latency > 5000"#
+        )
+        .bind(tenant_id)
+        .fetch_all(&self.pool)
+        .await
+        .unwrap_or_default();
+        
+        for (channel_id, channel_name, avg_latency) in high_latency_channels {
+            let exists = sqlx::query_scalar::<_, bool>(
+                "SELECT EXISTS(SELECT 1 FROM alerts WHERE entity_id = $1 AND entity_type = 'channel' AND alert_type = 'high_latency' AND is_resolved = FALSE)"
+            )
+            .bind(channel_id)
+            .fetch_one(&self.pool)
+            .await
+            .unwrap_or(false);
+            
+            if !exists {
+                if let Ok(alert) = self.create_alert(
+                    tenant_id,
+                    "warning",
+                    "high_latency",
+                    &format!("渠道 '{}' 的平均响应时间过长 ({:.0}ms)", channel_name, avg_latency),
+                    Some(channel_id),
+                    Some("channel"),
+                ).await {
+                    new_alerts.push(alert);
+                }
+            }
+        }
+        
+        // Check for low balance channels (<10)
+        let low_balance_channels = sqlx::query_as::<_, (i64, String, rust_decimal::Decimal)>(
+            r#"SELECT id, name, balance FROM channels 
+               WHERE tenant_id = $1 AND status = 'active' AND balance IS NOT NULL AND balance < 10"#
+        )
+        .bind(tenant_id)
+        .fetch_all(&self.pool)
+        .await
+        .unwrap_or_default();
+        
+        for (channel_id, channel_name, balance) in low_balance_channels {
+            let exists = sqlx::query_scalar::<_, bool>(
+                "SELECT EXISTS(SELECT 1 FROM alerts WHERE entity_id = $1 AND entity_type = 'channel' AND alert_type = 'low_balance' AND is_resolved = FALSE)"
+            )
+            .bind(channel_id)
+            .fetch_one(&self.pool)
+            .await
+            .unwrap_or(false);
+            
+            if !exists {
+                if let Ok(alert) = self.create_alert(
+                    tenant_id,
+                    "warning",
+                    "low_balance",
+                    &format!("渠道 '{}' 余额不足 ({:.2})", channel_name, balance),
+                    Some(channel_id),
+                    Some("channel"),
+                ).await {
+                    new_alerts.push(alert);
+                }
+            }
+        }
+        
+        Ok(new_alerts)
+    }
+    
+    /// Generate alerts for token quota
+    /// 生成令牌配额告警
+    pub async fn generate_token_alerts(&self, tenant_id: i64) -> Result<Vec<crate::db::Alert>> {
+        let mut new_alerts = Vec::new();
+        
+        // Check for tokens nearing quota limit (>80% used)
+        let quota_tokens = sqlx::query_as::<_, (i64, String, i64, i64)>(
+            r#"SELECT id, name, quota_limit, quota_used FROM tokens 
+               WHERE tenant_id = $1 AND status = 'active' 
+               AND quota_limit > 0 
+               AND quota_used::float / quota_limit::float > 0.8"#
+        )
+        .bind(tenant_id)
+        .fetch_all(&self.pool)
+        .await
+        .unwrap_or_default();
+        
+        for (token_id, token_name, quota_limit, quota_used) in quota_tokens {
+            let exists = sqlx::query_scalar::<_, bool>(
+                "SELECT EXISTS(SELECT 1 FROM alerts WHERE entity_id = $1 AND entity_type = 'token' AND alert_type = 'quota_exhaustion' AND is_resolved = FALSE)"
+            )
+            .bind(token_id)
+            .fetch_one(&self.pool)
+            .await
+            .unwrap_or(false);
+            
+            if !exists {
+                let usage_pct = (quota_used as f64 / quota_limit as f64) * 100.0;
+                let level = if usage_pct > 95.0 { "critical" } else { "warning" };
+                
+                if let Ok(alert) = self.create_alert(
+                    tenant_id,
+                    level,
+                    "quota_exhaustion",
+                    &format!("令牌 '{}' 的配额即将用尽 (已使用 {:.1}%)", token_name, usage_pct),
+                    Some(token_id),
+                    Some("token"),
+                ).await {
+                    new_alerts.push(alert);
+                }
+            }
+        }
+        
+        Ok(new_alerts)
     }
 }

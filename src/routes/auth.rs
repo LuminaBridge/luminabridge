@@ -9,6 +9,7 @@ use axum::{
     extract::{State, Json, Query},
     response::{Json as ResponseJson, IntoResponse},
     http::StatusCode,
+    Extension,
 };
 use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
@@ -27,6 +28,7 @@ pub fn auth_routes(state: AppState) -> Router<AppState> {
         .route("/logout", post(logout))
         .route("/refresh", post(refresh_token))
         .route("/register", post(register))
+        .route("/me", get(get_current_user))
         .route("/oauth/github", get(github_oauth))
         .route("/oauth/github/callback", get(github_callback))
         .route("/oauth/discord", get(discord_oauth))
@@ -170,6 +172,28 @@ async fn logout(
     Ok(ResponseJson(SuccessResponse::new(serde_json::json!({
         "logged_out": true
     })).with_message("登出成功")))
+}
+
+/// Get current user handler
+/// 获取当前用户处理器
+///
+/// GET /api/v1/auth/me
+pub async fn get_current_user(
+    Extension(claims): Extension<TokenClaims>,
+    State(state): State<AppState>,
+) -> Result<ResponseJson<SuccessResponse<UserDTO>>> {
+    info!("Getting current user info for user {}", claims.user_id);
+    
+    // Get user from database
+    let user = state.db.find_user(claims.user_id).await?
+        .ok_or_else(|| Error::Auth("User not found".to_string()))?;
+    
+    // Check user status
+    if user.status != "active" {
+        return Err(Error::Auth("User account is not active".to_string()));
+    }
+    
+    Ok(ResponseJson(SuccessResponse::new(UserDTO::from(&user))))
 }
 
 /// Refresh token request

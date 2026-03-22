@@ -5,6 +5,13 @@
 //! 处理向 AI 提供商的请求中继，包括渠道选择、负载均衡、故障转移和响应转换。
 
 pub mod types;
+pub mod stream;
+pub mod pricing;
+pub mod retry;
+
+pub use stream::{StreamingResponse, TokenTracker, UsageStats};
+pub use pricing::{PricingModel, calculate_cost, get_builtin_pricing};
+pub use retry::{RetryConfig, RetryCondition, retry_with_backoff, RetryResult};
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -129,45 +136,104 @@ impl RelayService {
         channel: &Channel,
         api_key: &str,
     ) -> Result<ChatCompletionResponse> {
-        info!("Relaying chat completion to channel: {}", channel.name);
+        // Use default retry config from channel or global settings
+        let retry_config = RetryConfig {
+            max_retries: channel.retry_count as u32,
+            base_delay_ms: 1000,
+            max_delay_ms: 30000,
+            retry_on: vec![
+                RetryCondition::NetworkError,
+                RetryCondition::Timeout,
+                RetryCondition::RateLimit,
+                RetryCondition::ServerError(500),
+                RetryCondition::ServerError(502),
+                RetryCondition::ServerError(503),
+                RetryCondition::ServerError(504),
+            ],
+        };
         
         let start_time = Instant::now();
-        let provider_url = self.build_provider_url(&channel.base_url, "/chat/completions");
         
-        // Transform request for specific provider if needed
-        let transformed_request = self.transform_request_for_provider(&request, &channel.channel_type)?;
+        // Wrap the relay operation in a retry closure
+        let operation = || async {
+            let provider_url = self.build_provider_url(&channel.base_url, "/chat/completions");
+            
+            // Transform request for specific provider if needed
+            let transformed_request = self.transform_request_for_provider(&request, &channel.channel_type)?;
+            
+            let response = self.client
+                .post(&provider_url)
+                .header("Authorization", format!("Bearer {}", api_key))
+                .header("Content-Type", "application/json")
+                .json(&transformed_request)
+                .send()
+                .await
+                .map_err(|e| Error::Provider(format!("Request failed: {}", e)))?;
+            
+            if !response.status().is_success() {
+                let status = response.status();
+                let error_text = response.text().await.unwrap_or_default();
+                warn!("Provider returned error: {} - {}", status, error_text);
+                
+                // Check if this is a retryable error
+                if let Some(_) = RetryCondition::should_retry_status(status.as_u16()) {
+                    return Err(Error::Provider(format!("Provider error (retryable): {} - {}", status, error_text)));
+                } else {
+                    return Err(Error::Provider(format!("Provider error: {} - {}", status, error_text)));
+                }
+            }
+            
+            let response_body: Value = response.json().await
+                .map_err(|e| Error::Provider(format!("Failed to parse response: {}", e)))?;
+            
+            // Transform response to OpenAI format
+            let openai_response = self.transform_response_to_openai(response_body, &request.model)?;
+            
+            Ok(openai_response)
+        };
         
-        let response = self.client
-            .post(&provider_url)
-            .header("Authorization", format!("Bearer {}", api_key))
-            .header("Content-Type", "application/json")
-            .json(&transformed_request)
-            .send()
-            .await
-            .map_err(|e| Error::Provider(format!("Request failed: {}", e)))?;
+        // Execute with retry
+        let retry_result = retry_with_backoff(
+            &retry_config,
+            operation,
+            |error: &Error| {
+                // Determine if we should retry based on error type
+                match error {
+                    Error::Provider(msg) => {
+                        msg.contains("retryable") || 
+                        msg.contains("500") || 
+                        msg.contains("502") || 
+                        msg.contains("503") || 
+                        msg.contains("504") ||
+                        msg.contains("timeout") ||
+                        msg.contains("Request failed")
+                    }
+                    Error::Network(_) => true,
+                    _ => false,
+                }
+            },
+        ).await;
         
         let latency_ms = start_time.elapsed().as_millis() as i32;
         
-        if !response.status().is_success() {
-            let status = response.status();
-            let error_text = response.text().await.unwrap_or_default();
-            warn!("Provider returned error: {} - {}", status, error_text);
-            return Err(Error::Provider(format!("Provider error: {} - {}", status, error_text)));
+        if retry_result.retried {
+            info!(
+                "Chat completion completed after {} attempts: latency={}ms",
+                retry_result.attempts, latency_ms
+            );
         }
         
-        let response_body: Value = response.json().await
-            .map_err(|e| Error::Provider(format!("Failed to parse response: {}", e)))?;
-        
-        // Transform response to OpenAI format
-        let openai_response = self.transform_response_to_openai(response_body, &request.model)?;
-        
-        info!(
-            "Chat completion successful: latency={}ms, tokens={:?}",
-            latency_ms,
-            openai_response.usage.as_ref().map(|u| u.total_tokens)
-        );
-        
-        Ok(openai_response)
+        match retry_result.result {
+            Ok(response) => {
+                info!(
+                    "Chat completion successful: latency={}ms, tokens={:?}",
+                    latency_ms,
+                    response.usage.as_ref().map(|u| u.total_tokens)
+                );
+                Ok(response)
+            }
+            Err(e) => Err(e),
+        }
     }
     
     /// Stream a chat completion request
@@ -504,8 +570,14 @@ impl RelayService {
         usage: &Usage,
         latency_ms: i32,
     ) -> Result<()> {
-        // Calculate cost (simplified - real implementation would use pricing tables)
-        let cost = rust_decimal::Decimal::ZERO;
+        // Calculate cost using pricing module
+        let cost_usd = pricing::calculate_cost(
+            model,
+            usage.prompt_tokens as i64,
+            usage.completion_tokens as i64,
+        );
+        let cost = rust_decimal::Decimal::from_f64_retain(cost_usd)
+            .unwrap_or(rust_decimal::Decimal::ZERO);
         
         self.db.create_usage_stat(
             tenant_id,
@@ -520,7 +592,13 @@ impl RelayService {
             Some(latency_ms),
         ).await?;
         
-        info!("Recorded usage: {} tokens", usage.total_tokens);
+        info!(
+            "Recorded usage: {} tokens (prompt: {}, completion: {}), cost: ${:.6}",
+            usage.total_tokens,
+            usage.prompt_tokens,
+            usage.completion_tokens,
+            cost_usd
+        );
         Ok(())
     }
     

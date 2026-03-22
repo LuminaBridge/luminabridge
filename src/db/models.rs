@@ -330,6 +330,79 @@ pub struct OAuthAccount {
     pub created_at: DateTime<Utc>,
 }
 
+/// Alert model
+/// 告警模型
+#[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
+pub struct Alert {
+    /// Alert ID
+    /// 告警 ID
+    pub id: i64,
+    
+    /// Tenant ID
+    /// 租户 ID
+    pub tenant_id: i64,
+    
+    /// Alert level (critical, warning, info)
+    /// 告警级别（critical、warning、info）
+    pub level: String,
+    
+    /// Alert type
+    /// 告警类型
+    pub alert_type: String,
+    
+    /// Alert message
+    /// 告警消息
+    pub message: String,
+    
+    /// Related entity ID (channel_id, token_id, etc.)
+    /// 相关实体 ID（渠道 ID、令牌 ID 等）
+    pub entity_id: Option<i64>,
+    
+    /// Entity type (channel, token, user, etc.)
+    /// 实体类型（channel、token、user 等）
+    pub entity_type: Option<String>,
+    
+    /// Is resolved
+    /// 是否已解决
+    pub is_resolved: bool,
+    
+    /// Created at
+    /// 创建时间
+    pub created_at: DateTime<Utc>,
+    
+    /// Resolved at
+    /// 解决时间
+    pub resolved_at: Option<DateTime<Utc>>,
+}
+
+/// Alert level enum
+/// 告警级别枚举
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum AlertLevel {
+    /// Critical - requires immediate attention
+    /// 紧急 - 需要立即处理
+    Critical,
+    /// Warning - needs attention
+    /// 警告 - 需要注意
+    Warning,
+    /// Info - general notification
+    /// 信息 - 一般通知
+    Info,
+}
+
+impl AlertLevel {
+    /// Convert to string
+    /// 转换为字符串
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            AlertLevel::Critical => "critical",
+            AlertLevel::Warning => "warning",
+            AlertLevel::Info => "info",
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
