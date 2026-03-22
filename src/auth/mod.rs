@@ -15,6 +15,7 @@ use crate::error::{Error, Result};
 use crate::db::User;
 
 pub use oauth::{OAuthProvider, OAuthFlow, GitHubProvider, DiscordProvider};
+pub use self::{TokenClaims, TenantClaims};
 
 /// Authentication service
 /// 认证服务
@@ -62,8 +63,15 @@ impl AuthService {
         
         let claims = TokenClaims {
             sub: user.id.to_string(),
+            user_id: user.id,
             email: user.email.clone(),
-            name: user.name.clone(),
+            display_name: user.display_name.clone(),
+            role: user.role.clone(),
+            tenant: TenantClaims {
+                tenant_id: user.tenant_id,
+                tenant_name: "Default".to_string(), // TODO: Load from database
+                tenant_slug: "default".to_string(),
+            },
             exp: expiration.timestamp() as usize,
             iat: Utc::now().timestamp() as usize,
         };
@@ -126,21 +134,50 @@ impl AuthService {
     }
 }
 
+/// Tenant claims in JWT token
+/// JWT 令牌中的租户声明
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TenantClaims {
+    /// Tenant ID
+    /// 租户 ID
+    pub tenant_id: i64,
+    
+    /// Tenant name
+    /// 租户名称
+    pub tenant_name: String,
+    
+    /// Tenant slug
+    /// 租户标识
+    pub tenant_slug: String,
+}
+
 /// JWT token claims
 /// JWT 令牌声明
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TokenClaims {
-    /// Subject (user ID)
-    /// 主题（用户 ID）
+    /// Subject (user ID as string)
+    /// 主题（用户 ID 字符串）
     pub sub: String,
+    
+    /// User ID
+    /// 用户 ID
+    pub user_id: i64,
     
     /// User email
     /// 用户电子邮件
     pub email: String,
     
-    /// User name
-    /// 用户名称
-    pub name: String,
+    /// User display name
+    /// 用户显示名称
+    pub display_name: Option<String>,
+    
+    /// User role
+    /// 用户角色
+    pub role: String,
+    
+    /// Tenant information
+    /// 租户信息
+    pub tenant: TenantClaims,
     
     /// Expiration time (Unix timestamp)
     /// 过期时间（Unix 时间戳）

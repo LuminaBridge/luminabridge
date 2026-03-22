@@ -99,9 +99,9 @@ impl From<&User> for UserDTO {
         UserDTO {
             id: user.id,
             email: user.email.clone(),
-            display_name: Some(user.name.clone()),
-            avatar_url: None,
-            role: "user".to_string(),
+            display_name: user.display_name.clone(),
+            avatar_url: user.avatar_url.clone(),
+            role: user.role.clone(),
         }
     }
 }

@@ -260,48 +260,6 @@ impl PaginationParams {
     }
 }
 
-/// Tenant information in JWT claims
-/// JWT 声明中的租户信息
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TenantClaims {
-    /// Tenant ID
-    /// 租户 ID
-    pub tenant_id: i64,
-    
-    /// Tenant name
-    /// 租户名称
-    pub tenant_name: String,
-    
-    /// Tenant slug
-    /// 租户标识
-    pub tenant_slug: String,
-}
-
-/// User claims in JWT token
-/// JWT 令牌中的用户声明
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct UserClaims {
-    /// User ID
-    /// 用户 ID
-    pub user_id: i64,
-    
-    /// User email
-    /// 用户电子邮件
-    pub email: String,
-    
-    /// User display name
-    /// 用户显示名称
-    pub display_name: Option<String>,
-    
-    /// User role
-    /// 用户角色
-    pub role: String,
-    
-    /// Tenant information
-    /// 租户信息
-    pub tenant: TenantClaims,
-}
-
 /// Channel status enum
 /// 渠道状态枚举
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

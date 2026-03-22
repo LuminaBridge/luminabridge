@@ -7,6 +7,7 @@ use sqlx::{PgPool, postgres::PgPoolOptions};
 use std::sync::Arc;
 use tokio::sync::broadcast;
 use tracing::{info, warn};
+use serde::Deserialize;
 
 use crate::config::DatabaseConfig;
 use crate::error::{Error, Result};
