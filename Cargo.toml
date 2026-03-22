@@ -68,6 +68,9 @@ lazy_static = "1.4"
 regex = "1.10"
 urlencoding = "2.1"
 
+# Decimal support
+rust_decimal = { version = "1.33", features = ["serde"] }
+
 # Async trait macro
 async-trait = "0.1"
 
