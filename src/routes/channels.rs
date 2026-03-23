@@ -1,4 +1,4 @@
-//! Channel management routes for LuminaBridge API
+﻿//! Channel management routes for LuminaBridge API
 //!
 //! Handles channel CRUD operations, testing, and batch operations.
 //! 处理渠道 CRUD 操作、测试和批量操作。
@@ -18,6 +18,7 @@ use crate::server::AppState;
 use crate::error::{Error, Result};
 use crate::types::{SuccessResponse, ErrorResponse, ErrorCode, PaginationParams, ChannelStatus, ChannelType, CreateChannelRequest, UpdateChannelRequest};
 use crate::auth::TokenClaims;
+use crate::db;
 
 /// Create channel routes
 /// 创建渠道路由
@@ -197,7 +198,7 @@ async fn list_channels(
     
     let total = state.db.count_channels(tenant_id, &params).await?;
     
-    let channel_dtos: Vec<ChannelDTO> = channels.into_iter().map(ChannelDTO::from).collect();
+    let channel_dtos: Vec<ChannelDTO> = channels.into_iter().map(|c| ChannelDTO::from(c)).collect();
     
     Ok(ResponseJson(SuccessResponse::new(channel_dtos)
         .with_meta(crate::types::ResponseMeta::for_pagination(
@@ -229,7 +230,7 @@ async fn create_channel(
     // Create channel
     let channel = state.db.create_channel(tenant_id, &payload).await?;
     
-    Ok(ResponseJson(SuccessResponse::new(ChannelDTO::from(&channel))
+    Ok(ResponseJson(SuccessResponse::new(ChannelDTO::from(channel))
         .with_message("渠道创建成功")))
 }
 
@@ -252,7 +253,7 @@ async fn get_channel(
         return Err(Error::Validation("Channel not found".to_string()));
     }
     
-    Ok(ResponseJson(SuccessResponse::new(ChannelDTO::from(&channel))))
+    Ok(ResponseJson(SuccessResponse::new(ChannelDTO::from(channel))))
 }
 
 /// Update channel handler
@@ -281,7 +282,7 @@ async fn update_channel(
     // Update channel
     let updated = state.db.update_channel(channel_id, &payload).await?;
     
-    Ok(ResponseJson(SuccessResponse::new(ChannelDTO::from(&updated))
+    Ok(ResponseJson(SuccessResponse::new(ChannelDTO::from(updated))
         .with_message("渠道更新成功")))
 }
 
@@ -384,7 +385,7 @@ async fn enable_channel(
     
     let updated = state.db.set_channel_status(channel_id, "active").await?;
     
-    Ok(ResponseJson(SuccessResponse::new(ChannelDTO::from(&updated))
+    Ok(ResponseJson(SuccessResponse::new(ChannelDTO::from(updated))
         .with_message("渠道已启用")))
 }
 
@@ -410,7 +411,7 @@ async fn disable_channel(
     
     let updated = state.db.set_channel_status(channel_id, "disabled").await?;
     
-    Ok(ResponseJson(SuccessResponse::new(ChannelDTO::from(&updated))
+    Ok(ResponseJson(SuccessResponse::new(ChannelDTO::from(updated))
         .with_message("渠道已禁用")))
 }
 
@@ -507,6 +508,33 @@ async fn test_channel_connection(
     // In production, this would actually test the channel by making a request
     // For now, just return Ok
     Ok(())
+}
+
+impl From<db::Channel> for ChannelDTO {
+    fn from(channel: db::Channel) -> Self {
+        let models: Vec<String> = serde_json::from_value(channel.models.clone())
+            .unwrap_or_default();
+        let balance: Option<f64> = channel.balance.map(|d| d.to_string().parse().unwrap_or(0.0));
+        
+        ChannelDTO {
+            id: channel.id,
+            tenant_id: channel.tenant_id,
+            name: channel.name,
+            channel_type: channel.channel_type,
+            base_url: channel.base_url,
+            models,
+            weight: channel.weight,
+            status: channel.status,
+            priority: channel.priority,
+            timeout_ms: channel.timeout_ms,
+            retry_count: channel.retry_count,
+            balance,
+            last_test_at: channel.last_test_at,
+            last_test_status: channel.last_test_status,
+            created_at: channel.created_at,
+            updated_at: channel.updated_at,
+        }
+    }
 }
 
 #[cfg(test)]

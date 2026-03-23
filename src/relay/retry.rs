@@ -4,6 +4,7 @@
 //! 处理失败请求的自动重试和指数退避。
 
 use std::future::Future;
+use std::pin::Pin;
 use std::time::Duration;
 use tokio::time::sleep;
 use tracing::{warn, info, debug};
@@ -160,13 +161,14 @@ pub struct RetryResult<T, E> {
 /// # Returns
 ///
 /// RetryResult containing the final result and metadata
-pub async fn retry_with_backoff<F, T, E, S>(
+pub async fn retry_with_backoff<F, Fut, T, E, S>(
     config: &RetryConfig,
     operation: F,
     should_retry: S,
 ) -> RetryResult<T, E>
 where
-    F: Fn() -> Future<Output = Result<T, E>>,
+    F: Fn() -> Fut,
+    Fut: Future<Output = Result<T, E>> + Send,
     S: Fn(&E) -> bool,
 {
     let mut attempts = 0;
@@ -224,12 +226,13 @@ where
 
 /// Simple retry wrapper for operations that always retry on error
 /// 简单重试包装器，出错时总是重试
-pub async fn retry_simple<F, T, E>(
+pub async fn retry_simple<F, Fut, T, E>(
     config: &RetryConfig,
     operation: F,
 ) -> RetryResult<T, E>
 where
-    F: Fn() -> Future<Output = Result<T, E>>,
+    F: Fn() -> Fut,
+    Fut: Future<Output = Result<T, E>> + Send,
     E: std::fmt::Debug,
 {
     retry_with_backoff(config, operation, |_| true).await

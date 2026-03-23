@@ -49,7 +49,7 @@ pub async fn send_webhook(
         .map_err(|e| Error::Internal(format!("Failed to send webhook: {}", e)))?;
 
     if response.status().is_success() {
-        log::info!("Webhook alert sent successfully to {}", url);
+        tracing::info!("Webhook alert sent successfully to {}", url);
         Ok(())
     } else {
         Err(Error::Internal(format!(
@@ -99,7 +99,7 @@ pub async fn send_slack_webhook(
         .map_err(|e| Error::Internal(format!("Failed to send Slack webhook: {}", e)))?;
 
     if response.status().is_success() {
-        log::info!("Slack webhook alert sent successfully");
+        tracing::info!("Slack webhook alert sent successfully");
         Ok(())
     } else {
         Err(Error::Internal(format!(

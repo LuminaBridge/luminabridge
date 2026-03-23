@@ -96,7 +96,7 @@ pub async fn send_discord_message(
         .map_err(|e| Error::Internal(format!("Failed to send Discord webhook: {}", e)))?;
 
     if response.status().is_success() {
-        log::info!("Discord alert sent successfully");
+        tracing::info!("Discord alert sent successfully");
         Ok(())
     } else {
         Err(Error::Internal(format!(
@@ -162,7 +162,7 @@ pub async fn send_discord_rich_notification(
         .map_err(|e| Error::Internal(format!("Failed to send Discord webhook: {}", e)))?;
 
     if response.status().is_success() {
-        log::info!("Discord rich notification sent successfully");
+        tracing::info!("Discord rich notification sent successfully");
         Ok(())
     } else {
         Err(Error::Internal(format!(

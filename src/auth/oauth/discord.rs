@@ -54,17 +54,17 @@ impl DiscordProvider {
     
     /// Build query parameters for authorization URL
     /// 构建授权 URL 的查询参数
-    fn build_auth_params(&self, state: &str) -> Vec<(&str, &str)> {
+    fn build_auth_params(&self, state: &str) -> Vec<(String, String)> {
         let mut params = vec![
-            ("client_id", self.config.client_id.as_str()),
-            ("redirect_uri", self.config.redirect_url.as_str()),
-            ("response_type", "code"),
-            ("state", state),
+            ("client_id".to_string(), self.config.client_id.clone()),
+            ("redirect_uri".to_string(), self.config.redirect_url.clone()),
+            ("response_type".to_string(), "code".to_string()),
+            ("state".to_string(), state.to_string()),
         ];
         
         if !self.config.scopes.is_empty() {
             let scope = self.config.scopes.join("+");
-            params.push(("scope", scope.as_str()));
+            params.push(("scope".to_string(), scope));
         }
         
         params
@@ -80,7 +80,7 @@ impl OAuthProvider for DiscordProvider {
     fn get_authorization_url(&self, state: &str) -> String {
         let params = self.build_auth_params(state);
         let query = params.iter()
-            .map(|(k, v)| format!("{}={}", k, urlencoding::encode(v)))
+            .map(|(k, v)| format!("{}={}", k, urlencoding::encode(v.as_str())))
             .collect::<Vec<_>>()
             .join("&");
         
@@ -93,8 +93,8 @@ impl OAuthProvider for DiscordProvider {
         let params = [
             ("client_id", &self.config.client_id),
             ("client_secret", &self.config.client_secret),
-            ("grant_type", "authorization_code"),
-            ("code", code),
+            ("grant_type", &"authorization_code".to_string()),
+            ("code", &code.to_string()),
             ("redirect_uri", &self.config.redirect_url),
         ];
         
@@ -118,7 +118,7 @@ impl OAuthProvider for DiscordProvider {
             access_token: token_response.access_token,
             token_type: token_response.token_type,
             expires_in: Some(token_response.expires_in),
-            refresh_token: token_response.refresh_token,
+            refresh_token: Some(token_response.refresh_token),
             scope: Some(token_response.scope.join(" ")),
         })
     }
@@ -142,21 +142,22 @@ impl OAuthProvider for DiscordProvider {
             .map_err(|e| Error::OAuth(format!("Failed to parse Discord user: {}", e)))?;
         
         // Discord users may not have verified email
-        let email = discord_user.email
+        let email = discord_user.email.clone()
             .ok_or_else(|| Error::OAuth("User has no verified email".to_string()))?;
         
         // Build avatar URL if avatar is present
-        let avatar_url = discord_user.avatar.map(|avatar| {
+        let user_id = discord_user.id.clone();
+        let avatar_url = discord_user.avatar.clone().map(|avatar| {
             format!(
                 "https://cdn.discordapp.com/avatars/{}/{}.png",
-                discord_user.id, avatar
+                user_id, avatar
             )
         });
         
         Ok(UserInfo {
-            provider_id: discord_user.id,
+            provider_id: user_id,
             email,
-            name: discord_user.username,
+            name: discord_user.username.clone(),
             avatar_url,
             extra: Some(serde_json::to_value(&discord_user).unwrap_or_default()),
         })
@@ -168,8 +169,8 @@ impl OAuthProvider for DiscordProvider {
         let params = [
             ("client_id", &self.config.client_id),
             ("client_secret", &self.config.client_secret),
-            ("grant_type", "refresh_token"),
-            ("refresh_token", refresh_token),
+            ("grant_type", &"refresh_token".to_string()),
+            ("refresh_token", &refresh_token.to_string()),
         ];
         
         let response = self.client
@@ -192,7 +193,7 @@ impl OAuthProvider for DiscordProvider {
             access_token: token_response.access_token,
             token_type: token_response.token_type,
             expires_in: Some(token_response.expires_in),
-            refresh_token: token_response.refresh_token,
+            refresh_token: Some(token_response.refresh_token),
             scope: Some(token_response.scope.join(" ")),
         })
     }
@@ -203,7 +204,7 @@ impl OAuthProvider for DiscordProvider {
         let params = [
             ("client_id", &self.config.client_id),
             ("client_secret", &self.config.client_secret),
-            ("token", access_token),
+            ("token", &access_token.to_string()),
         ];
         
         let response = self.client

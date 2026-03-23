@@ -11,6 +11,7 @@ use axum::{
     Extension,
 };
 use serde::{Deserialize, Serialize};
+use sqlx::FromRow;
 use tracing::info;
 use chrono::{DateTime, Utc};
 
@@ -71,6 +72,22 @@ pub struct TenantDTO {
     pub updated_at: DateTime<Utc>,
 }
 
+impl From<&crate::db::Tenant> for TenantDTO {
+    fn from(tenant: &crate::db::Tenant) -> Self {
+        TenantDTO {
+            id: tenant.id,
+            name: tenant.name.clone(),
+            slug: tenant.slug.clone(),
+            status: tenant.status.clone(),
+            quota_limit: tenant.quota_limit,
+            quota_used: tenant.quota_used,
+            settings: tenant.settings.clone(),
+            created_at: tenant.created_at,
+            updated_at: tenant.updated_at,
+        }
+    }
+}
+
 /// Tenant usage stats
 /// 租户用量统计
 #[derive(Debug, Serialize)]
@@ -114,7 +131,7 @@ pub struct TenantUsageStats {
 
 /// Tenant member
 /// 租户成员
-#[derive(Debug, Serialize)]
+#[derive(Debug, FromRow, Serialize)]
 pub struct TenantMember {
     /// User ID
     /// 用户 ID

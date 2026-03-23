@@ -11,6 +11,7 @@ use axum::{
     Extension,
 };
 use serde::{Deserialize, Serialize};
+use sqlx::FromRow;
 use tracing::info;
 use chrono::{DateTime, Utc};
 
@@ -54,7 +55,7 @@ fn default_group_by() -> String { "day".to_string() }
 
 /// Usage statistics entry
 /// 用量统计条目
-#[derive(Debug, Serialize)]
+#[derive(Debug, FromRow, Serialize)]
 pub struct UsageStatEntry {
     /// Timestamp
     /// 时间戳
@@ -83,7 +84,7 @@ pub struct UsageStatEntry {
 
 /// Usage trend entry (for request trend)
 /// 用量趋势条目（用于请求趋势）
-#[derive(Debug, Serialize)]
+#[derive(Debug, FromRow, Serialize)]
 pub struct UsageTrendEntry {
     /// Date (YYYY-MM-DD)
     /// 日期（YYYY-MM-DD）
@@ -104,7 +105,7 @@ pub struct UsageTrendEntry {
 
 /// Channel statistics
 /// 渠道统计
-#[derive(Debug, Serialize)]
+#[derive(Debug, FromRow, Serialize)]
 pub struct ChannelStats {
     /// Channel ID
     /// 渠道 ID
@@ -141,7 +142,7 @@ pub struct ChannelStats {
 
 /// Model statistics
 /// 模型统计
-#[derive(Debug, Serialize)]
+#[derive(Debug, FromRow, Serialize)]
 pub struct ModelStats {
     /// Model name
     /// 模型名称

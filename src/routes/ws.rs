@@ -10,7 +10,8 @@ use axum::{
 };
 use futures::{sink::SinkExt, stream::StreamExt};
 use serde::{Deserialize, Serialize};
-use tokio::sync::broadcast;
+use std::sync::Arc;
+use tokio::sync::{broadcast, Mutex};
 use tracing::{info, warn, error};
 use chrono::Utc;
 
@@ -136,12 +137,16 @@ async fn handle_socket(
     info!("WebSocket connection established for user {} (tenant {})", user_id, tenant_id);
     
     // Subscribe to broadcast channel for stats
-    let mut stats_rx = state.stats_sender.subscribe();
+    let mut stats_rx = state.db.stats_sender.subscribe();
     
     // Connection metadata
     let connected_at = Utc::now();
     
+    // Use Arc<Mutex> to share sender between tasks
+    let sender = Arc::new(tokio::sync::Mutex::new(sender));
+    
     // Send task - push data to client
+    let send_sender = sender.clone();
     let send_task = tokio::spawn(async move {
         let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(5));
         
@@ -151,7 +156,8 @@ async fn handle_socket(
                 _ = interval.tick() => {
                     let ping_msg = WsMessage::Ping;
                     if let Ok(json) = serde_json::to_string(&ping_msg) {
-                        if sender.send(Message::Text(json)).await.is_err() {
+                        let mut sender_guard = send_sender.lock().await;
+                        if sender_guard.send(Message::Text(json)).await.is_err() {
                             break;
                         }
                     }
@@ -160,10 +166,10 @@ async fn handle_socket(
                 // Receive stats from broadcast channel
                 Ok(stats) = stats_rx.recv() => {
                     // Only send stats for this tenant
-                    // In production, filter by tenant_id in the stats struct
                     let msg = WsMessage::Stats { data: stats };
                     if let Ok(json) = serde_json::to_string(&msg) {
-                        if sender.send(Message::Text(json)).await.is_err() {
+                        let mut sender_guard = send_sender.lock().await;
+                        if sender_guard.send(Message::Text(json)).await.is_err() {
                             break;
                         }
                     }
@@ -173,6 +179,7 @@ async fn handle_socket(
     });
     
     // Receive task - handle client messages
+    let recv_sender = sender.clone();
     let recv_task = tokio::spawn(async move {
         while let Some(Ok(msg)) = receiver.next().await {
             match msg {
@@ -184,7 +191,8 @@ async fn handle_socket(
                                 // Respond with pong
                                 let pong_msg = WsMessage::Pong;
                                 if let Ok(json) = serde_json::to_string(&pong_msg) {
-                                    let _ = sender.send(Message::Text(json)).await;
+                                    let mut sender_guard = recv_sender.lock().await;
+                                    let _ = sender_guard.send(Message::Text(json)).await;
                                 }
                             }
                             ClientMessage::Subscribe { channel } => {
@@ -227,7 +235,7 @@ async fn handle_socket(
 /// Broadcast stats to all connected WebSocket clients
 /// 向所有连接的 WebSocket 客户端广播统计
 pub async fn broadcast_stats(state: &AppState, stats: RealtimeStats) {
-    if let Err(e) = state.stats_sender.send(stats) {
+    if let Err(e) = state.db.stats_sender.send(stats) {
         warn!("Failed to broadcast stats: {}", e);
     }
 }

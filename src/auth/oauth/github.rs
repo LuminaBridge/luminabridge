@@ -54,16 +54,16 @@ impl GitHubProvider {
     
     /// Build query parameters for authorization URL
     /// 构建授权 URL 的查询参数
-    fn build_auth_params(&self, state: &str) -> Vec<(&str, &str)> {
+    fn build_auth_params(&self, state: &str) -> Vec<(String, String)> {
         let mut params = vec![
-            ("client_id", self.config.client_id.as_str()),
-            ("redirect_uri", self.config.redirect_url.as_str()),
-            ("state", state),
+            ("client_id".to_string(), self.config.client_id.clone()),
+            ("redirect_uri".to_string(), self.config.redirect_url.clone()),
+            ("state".to_string(), state.to_string()),
         ];
         
         if !self.config.scopes.is_empty() {
             let scope = self.config.scopes.join(" ");
-            params.push(("scope", scope.as_str()));
+            params.push(("scope".to_string(), scope));
         }
         
         params
@@ -78,10 +78,11 @@ impl OAuthProvider for GitHubProvider {
     
     fn get_authorization_url(&self, state: &str) -> String {
         let params = self.build_auth_params(state);
-        let query = urlencoding::encode(&params.iter()
+        let query_string = params.iter()
             .map(|(k, v)| format!("{}={}", k, v))
             .collect::<Vec<_>>()
-            .join("&"));
+            .join("&");
+        let query = urlencoding::encode(&query_string);
         
         format!("{}?{}", self.auth_url, query)
     }
@@ -92,7 +93,7 @@ impl OAuthProvider for GitHubProvider {
         let params = [
             ("client_id", &self.config.client_id),
             ("client_secret", &self.config.client_secret),
-            ("code", code),
+            ("code", &code.to_string()),
             ("redirect_uri", &self.config.redirect_url),
         ];
         
@@ -155,11 +156,14 @@ impl OAuthProvider for GitHubProvider {
             self.get_primary_email(access_token).await?
         };
         
+        let name = github_user.name.clone().unwrap_or_else(|| github_user.login.clone());
+        let avatar_url = github_user.avatar_url.clone();
+        
         Ok(UserInfo {
             provider_id: github_user.id.to_string(),
             email,
-            name: github_user.name.unwrap_or_else(|| github_user.login.clone()),
-            avatar_url: github_user.avatar_url,
+            name,
+            avatar_url: Some(avatar_url),
             extra: Some(serde_json::to_value(&github_user).unwrap_or_default()),
         })
     }

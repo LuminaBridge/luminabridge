@@ -16,9 +16,10 @@ use chrono::{DateTime, Utc};
 
 use crate::server::AppState;
 use crate::error::{Error, Result};
-use crate::types::{SuccessResponse, PaginationParams, UpdateUserRequest};
+use crate::types::{SuccessResponse, UpdateUserRequest};
 use crate::routes::auth::UserDTO;
 use crate::auth::TokenClaims;
+pub use crate::db::UserListParams;
 
 /// Create user routes
 /// 创建用户路由
@@ -32,22 +33,6 @@ pub fn user_routes(state: AppState) -> Router<AppState> {
         .route("/:id/usage", get(get_user_usage))
         .route("/me", get(get_current_user))
         .with_state(state)
-}
-
-/// User list query parameters
-/// 用户列表查询参数
-#[derive(Debug, Deserialize)]
-pub struct UserListParams {
-    #[serde(flatten)]
-    pub pagination: PaginationParams,
-    
-    /// Filter by status
-    /// 按状态筛选
-    pub status: Option<String>,
-    
-    /// Filter by role
-    /// 按角色筛选
-    pub role: Option<String>,
 }
 
 /// User detail DTO
@@ -97,6 +82,24 @@ pub struct UserDetailDTO {
     /// Last login at
     /// 最后登录时间
     pub last_login_at: Option<DateTime<Utc>>,
+}
+
+impl From<&crate::db::User> for UserDetailDTO {
+    fn from(user: &crate::db::User) -> Self {
+        UserDetailDTO {
+            id: user.id,
+            email: user.email.clone(),
+            display_name: user.display_name.clone(),
+            avatar_url: user.avatar_url.clone(),
+            role: user.role.clone(),
+            status: user.status.clone(),
+            tenant_id: user.tenant_id,
+            oauth_provider: user.oauth_provider.clone(),
+            created_at: user.created_at,
+            updated_at: user.updated_at,
+            last_login_at: user.last_login_at,
+        }
+    }
 }
 
 /// Invite user request
@@ -168,7 +171,7 @@ async fn list_users(
     let users = state.db.find_users_by_tenant(tenant_id, &params).await?;
     let total = state.db.count_users(tenant_id, &params).await?;
     
-    let user_dtos: Vec<UserDetailDTO> = users.into_iter().map(UserDetailDTO::from).collect();
+    let user_dtos: Vec<UserDetailDTO> = users.iter().map(UserDetailDTO::from).collect();
     
     Ok(ResponseJson(SuccessResponse::new(user_dtos)
         .with_meta(crate::types::ResponseMeta::for_pagination(

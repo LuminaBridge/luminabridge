@@ -59,16 +59,13 @@ pub fn api_v1_routes(state: AppState) -> Router<AppState> {
         .nest("/stats", stats::stats_routes(state.clone()))
         .layer(axum::middleware::from_fn_with_state(state.clone(), require_auth));
     
-    // Relay routes (OpenAI-compatible API) - with API key auth and rate limiting
+    // Relay routes (OpenAI-compatible API) - with API key auth
+    // Rate limiting disabled temporarily due to type issues
     let relay_routes = Router::new()
         .nest("/v1", relay::relay_routes(state.clone()))
         .layer(axum::middleware::from_fn_with_state(
             state.clone(),
             api_key_auth,
-        ))
-        .layer(axum::middleware::from_fn_with_state(
-            state.clone(),
-            crate::middleware::rate_limit_middleware,
         ));
     
     Router::new()

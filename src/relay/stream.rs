@@ -86,7 +86,7 @@ impl TokenTracker {
     /// # Returns
     ///
     /// Ok(()) if within quota, Err(QuotaExceeded) if exceeded
-    pub fn add_completion_tokens(&mut self, tokens: i64) -> Result<(), QuotaExceeded> {
+    pub fn add_completion_tokens(&mut self, tokens: i64) -> std::result::Result<(), QuotaExceeded> {
         if self.exceeded {
             return Err(QuotaExceeded {
                 tokens_used: self.get_total_usage(),

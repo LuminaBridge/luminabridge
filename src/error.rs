@@ -114,11 +114,6 @@ pub enum Error {
     #[error("Streaming quota exceeded: used {0} tokens, limit {1}")]
     QuotaExceeded(i64, i64),
 
-    /// API Token expired
-    /// API 令牌已过期
-    #[error("Token expired")]
-    TokenExpired,
-
     /// Model not permitted for this token
     /// 此令牌不允许访问该模型
     #[error("Model not permitted")]
@@ -157,7 +152,6 @@ impl Error {
             Error::TokenNotFound => 404,
             Error::TokenQuotaExceeded => 429,
             Error::QuotaExceeded(_, _) => 429,
-            Error::TokenExpired => 401,
             Error::ModelNotPermitted => 403,
             Error::IpNotAllowed => 403,
         }
@@ -224,7 +218,6 @@ impl Error {
             Error::TokenNotFound => "TOKEN_NOT_FOUND",
             Error::TokenQuotaExceeded => "TOKEN_QUOTA_EXCEEDED",
             Error::QuotaExceeded(_, _) => "QUOTA_EXCEEDED",
-            Error::TokenExpired => "TOKEN_EXPIRED",
             Error::ModelNotPermitted => "MODEL_NOT_PERMITTED",
             Error::IpNotAllowed => "IP_NOT_ALLOWED",
         }

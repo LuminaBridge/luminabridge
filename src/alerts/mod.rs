@@ -156,7 +156,7 @@ impl AlertManager {
                         has_success = true;
                     }
                     Err(e) => {
-                        log::error!("Failed to send email alert: {}", e);
+                        tracing::error!("Failed to send email alert: {}", e);
                     }
                 }
             }
@@ -170,7 +170,7 @@ impl AlertManager {
                     has_success = true;
                 }
                 Err(e) => {
-                    log::error!("Failed to send webhook alert: {}", e);
+                    tracing::error!("Failed to send webhook alert: {}", e);
                 }
             }
         }
@@ -190,7 +190,7 @@ impl AlertManager {
                     has_success = true;
                 }
                 Err(e) => {
-                    log::error!("Failed to send Discord alert: {}", e);
+                    tracing::error!("Failed to send Discord alert: {}", e);
                 }
             }
         }

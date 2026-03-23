@@ -1,4 +1,4 @@
-//! Token management routes for LuminaBridge API
+﻿//! Token management routes for LuminaBridge API
 //!
 //! Handles API token CRUD operations and quota management.
 //! 处理 API 令牌 CRUD 操作和配额管理。
@@ -18,6 +18,7 @@ use crate::server::AppState;
 use crate::error::{Error, Result};
 use crate::types::{SuccessResponse, PaginationParams, CreateTokenRequest};
 use crate::auth::TokenClaims;
+use crate::db;
 
 /// Create token routes
 /// 创建令牌路由
@@ -147,7 +148,7 @@ async fn list_tokens(
     let tokens = state.db.find_tokens_by_tenant(tenant_id, &params).await?;
     let total = state.db.count_tokens(tenant_id, &params).await?;
     
-    let token_dtos: Vec<TokenDTO> = tokens.into_iter().map(TokenDTO::from).collect();
+    let token_dtos: Vec<TokenDTO> = tokens.into_iter().map(|t| TokenDTO::from(t)).collect();
     
     Ok(ResponseJson(SuccessResponse::new(token_dtos)
         .with_meta(crate::types::ResponseMeta::for_pagination(
@@ -182,7 +183,7 @@ async fn create_token(
         &payload,
     ).await?;
     
-    let mut response = TokenDTO::from(&token);
+    let mut response = TokenDTO::from(token);
     // Return full key only on creation
     response.key = token_key;
     
@@ -208,7 +209,7 @@ async fn get_token(
         return Err(Error::Validation("Token not found".to_string()));
     }
     
-    Ok(ResponseJson(SuccessResponse::new(TokenDTO::from(&token))))
+    Ok(ResponseJson(SuccessResponse::new(TokenDTO::from(token))))
 }
 
 /// Delete token handler
@@ -258,7 +259,7 @@ async fn update_quota(
     
     let updated = state.db.update_token_quota(token_id, payload.quota_limit).await?;
     
-    Ok(ResponseJson(SuccessResponse::new(TokenDTO::from(&updated))
+    Ok(ResponseJson(SuccessResponse::new(TokenDTO::from(updated))
         .with_message("配额更新成功")))
 }
 
@@ -297,6 +298,38 @@ fn generate_token_key() -> String {
     format!("sk-{}", Uuid::new_v4().to_string().replace('-', ""))
 }
 
+impl From<db::Token> for TokenDTO {
+    fn from(token: db::Token) -> Self {
+        let allowed_ips: Option<Vec<String>> = token.allowed_ips
+            .and_then(|v| serde_json::from_value(v).ok());
+        let allowed_models: Option<Vec<String>> = token.allowed_models
+            .and_then(|v| serde_json::from_value(v).ok());
+        
+        let masked_key = if token.key.len() > 12 {
+            format!("{}...{}", &token.key[..8], &token.key[token.key.len()-4..])
+        } else {
+            token.key
+        };
+        
+        TokenDTO {
+            id: token.id,
+            tenant_id: token.tenant_id,
+            user_id: token.user_id,
+            key: masked_key,
+            name: token.name,
+            quota_limit: token.quota_limit,
+            quota_used: token.quota_used,
+            expire_at: token.expire_at,
+            status: token.status,
+            allowed_ips,
+            allowed_models,
+            last_used_at: token.last_used_at,
+            created_at: token.created_at,
+            updated_at: token.updated_at,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -305,6 +338,6 @@ mod tests {
     fn test_token_key_generation() {
         let key = generate_token_key();
         assert!(key.starts_with("sk-"));
-        assert_eq!(key.len(), 36); // sk- + 32 hex chars (without dashes)
+        assert_eq!(key.len(), 36);
     }
 }

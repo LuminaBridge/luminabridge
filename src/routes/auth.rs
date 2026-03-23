@@ -18,7 +18,7 @@ use crate::server::AppState;
 use crate::error::{Error, Result};
 use crate::types::{SuccessResponse, ErrorResponse, ErrorCode};
 use crate::auth::{AuthService, TokenClaims};
-use crate::db::{Database, UserRepository, User};
+use crate::db::{Database, User};
 
 /// Create authentication routes
 /// 创建认证路由
@@ -128,7 +128,8 @@ async fn login(
         .ok_or_else(|| Error::InvalidCredentials)?;
     
     // Verify password using argon2
-    let password_valid = verify_password(&payload.password, &user.password_hash.unwrap_or_default())?;
+    let password_hash = user.password_hash.as_deref().unwrap_or_default();
+    let password_valid = verify_password(&payload.password, password_hash)?;
     if !password_valid {
         return Err(Error::InvalidCredentials);
     }
@@ -340,7 +341,7 @@ async fn github_oauth(
 /// GitHub OAuth 回调处理器
 ///
 /// GET /api/v1/auth/oauth/github/callback
-async fn github_callback(
+pub async fn github_callback(
     State(state): State<AppState>,
     Query(params): Query<OAuthCallbackParams>,
 ) -> Result<ResponseJson<SuccessResponse<LoginResponse>>> {
@@ -434,7 +435,7 @@ async fn discord_oauth(
 /// Discord OAuth 回调处理器
 ///
 /// GET /api/v1/auth/oauth/discord/callback
-async fn discord_callback(
+pub async fn discord_callback(
     State(state): State<AppState>,
     Query(params): Query<OAuthCallbackParams>,
 ) -> Result<ResponseJson<SuccessResponse<LoginResponse>>> {

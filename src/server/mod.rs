@@ -92,12 +92,13 @@ impl Server {
             .nest("/api/v1", api_routes(state.clone()))
             
             // OAuth routes
-            .nest("/auth", oauth_routes(state))
+            .nest("/auth", oauth_routes(state.clone()))
             
             // Apply middleware
             .layer(cors)
             .layer(TraceLayer::new_for_http())
             .layer(CompressionLayer::new())
+            .with_state(state.clone())
     }
     
     /// Run the server

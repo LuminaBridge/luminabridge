@@ -14,8 +14,7 @@ use crate::config::OAuthConfig;
 use crate::error::{Error, Result};
 use crate::db::User;
 
-pub use oauth::{OAuthProvider, OAuthFlow, GitHubProvider, DiscordProvider};
-pub use self::{TokenClaims, TenantClaims};
+pub use oauth::{OAuthProvider, GitHubProvider, DiscordProvider};
 
 /// Authentication service
 /// 认证服务
@@ -153,7 +152,7 @@ pub struct TenantClaims {
 
 /// JWT token claims
 /// JWT 令牌声明
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TokenClaims {
     /// Subject (user ID as string)
     /// 主题（用户 ID 字符串）

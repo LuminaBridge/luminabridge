@@ -5,7 +5,7 @@
 
 use axum::{
     extract::{State, Path, Extension},
-    response::{Json, Response},
+    response::{Json, Response, IntoResponse},
     http::{StatusCode, header},
     routing::{get, post},
     Router,
@@ -67,7 +67,7 @@ pub async fn chat_completions_handler(
     // Select channel based on model
     let channel = relay.select_channel(&body.model, tenant_id).await?;
     
-    let request = body.into_inner();
+    let axum::Json(request) = body;
     
     // Check if streaming is requested
     if request.stream.unwrap_or(false) {
@@ -142,7 +142,7 @@ async fn handle_streaming_completion(
     
     // Get token quota limit
     let quota_limit = {
-        let token = relay.db.find_token(token_id).await?
+        let token = relay.db().find_token(token_id).await?
             .ok_or(Error::TokenNotFound)?;
         token.quota_limit.unwrap_or(0) // 0 = unlimited
     };
@@ -161,20 +161,18 @@ async fn handle_streaming_completion(
     );
     
     // Create channels for streaming
-    let (tx, rx) = tokio::sync::mpsc::channel(100);
+    let (tx, rx) = tokio::sync::mpsc::channel::<std::result::Result<std::string::String, std::convert::Infallible>>(100);
     
     // Spawn task to process stream with token tracking
     let relay_clone = relay.clone();
-    let tenant_id = relay_clone.db.find_token(token_id).await?.map(|t| t.tenant_id).unwrap_or(1);
+    let tenant_id = relay_clone.db().find_token(token_id).await?.map(|t| t.tenant_id).unwrap_or(1);
     let channel_id = channel.id;
-    let model = streaming_response.stream.as_ref()
-        .map(|_| channel.name.clone())
-        .unwrap_or_else(|| "unknown".to_string());
+    let model = channel.name.clone();
     
     tokio::spawn(async move {
         let mut stream_error: Option<crate::error::Error> = None;
         
-        while let Some(chunk_result) = streaming_response.next().await {
+        while let Some(chunk_result) = futures_util::StreamExt::next(&mut streaming_response).await {
             match chunk_result {
                 Ok(chunk) => {
                     let data = serde_json::to_string(&chunk).unwrap_or_default();
@@ -184,8 +182,8 @@ async fn handle_streaming_completion(
                 }
                 Err(e) => {
                     warn!("Stream error: {}", e);
-                    stream_error = Some(e);
                     let error_data = format!("data: {{\"error\": \"{}\"}}\n\n", e);
+                    stream_error = Some(e);
                     let _ = tx.send(Ok(error_data)).await;
                     break;
                 }
@@ -228,7 +226,7 @@ async fn handle_streaming_completion(
     // Convert to SSE stream
     let sse_stream = tokio_stream::wrappers::ReceiverStream::new(rx);
     
-    let body = Body::from_stream(sse_stream.map(|result| {
+    let body = Body::from_stream(futures_util::StreamExt::map(sse_stream, |result| {
         match result {
             Ok(data) => Ok::<_, Infallible>(data),
             Err(e) => Ok(format!("data: {{\"error\": \"{}\"}}\n\n", e)),
@@ -323,7 +321,7 @@ pub async fn completions_handler(
     // Select channel
     let channel = relay.select_channel(&body.model, tenant_id).await?;
     
-    let request = body.into_inner();
+    let axum::Json(request) = body;
     
     // Relay the request
     let response = relay.relay_completion(request, &channel, &api_key).await?;
@@ -356,7 +354,7 @@ pub async fn list_models_handler(
     // Get model list (filtered by token permissions)
     let model_list = relay.list_models_filtered(tenant_id, token).await?;
     
-    Ok(Json(serde_json::to_value(model_list)?))
+    Ok(Json(serde_json::to_value(model_list).map_err(|e| Error::Validation(format!("Failed to serialize model list: {}", e)))?))
 }
 
 /// Get model details endpoint
@@ -385,7 +383,7 @@ pub async fn get_model_handler(
     // Get model details
     let model = relay.get_model(&model_id, tenant_id).await?;
     
-    Ok(Json(serde_json::to_value(model)?))
+    Ok(Json(serde_json::to_value(model).map_err(|e| Error::Validation(format!("Failed to serialize model: {}", e)))?))
 }
 
 // ============================================================================

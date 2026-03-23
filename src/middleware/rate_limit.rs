@@ -303,12 +303,9 @@ pub async fn rate_limit_middleware(
 /// 创建速率限制中间件层
 pub fn create_rate_limit_layer(
     config: Arc<RateLimitConfig>,
-) -> axum::middleware::FromFn<
-    fn(RateLimiterState, Request, Next) -> axum::extract::RequestPart<impl futures_util::Future<Output = std::result::Result<Response, Error>>>,
-    RateLimiterState,
-> {
+) -> impl Clone {
     let state = RateLimiterState::new(config);
-    axum::middleware::from_fn_with_state(state, rate_limit_middleware)
+    axum::middleware::from_fn_with_state::<_, RateLimiterState, (crate::middleware::rate_limit::RateLimiterState, axum::extract::Request, axum::middleware::Next)>(state, rate_limit_middleware)
 }
 
 /// Custom rate limit strategy trait

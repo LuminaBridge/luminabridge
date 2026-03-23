@@ -101,7 +101,7 @@ impl EmailSender {
         // Send email
         match mailer.send(&email) {
             Ok(_) => {
-                log::info!("Email alert sent successfully to {} recipients", recipients.len());
+                tracing::info!("Email alert sent successfully to {} recipients", recipients.len());
                 Ok(())
             }
             Err(e) => {
