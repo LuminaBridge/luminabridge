@@ -22,7 +22,7 @@ use crate::db;
 
 /// Create token routes
 /// 创建令牌路由
-pub fn token_routes(state: AppState) -> Router<AppState> {
+pub fn token_routes() -> Router<AppState> {
     Router::new()
         .route("/", get(list_tokens))
         .route("/", post(create_token))
@@ -30,7 +30,6 @@ pub fn token_routes(state: AppState) -> Router<AppState> {
         .route("/:id", delete(delete_token))
         .route("/:id/quota", patch(update_quota))
         .route("/:id/regenerate", post(regenerate_token))
-        .with_state(state)
 }
 
 /// Token list query parameters

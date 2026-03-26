@@ -22,7 +22,7 @@ use crate::db::{Database, User};
 
 /// Create authentication routes
 /// 创建认证路由
-pub fn auth_routes(state: AppState) -> Router<AppState> {
+pub fn auth_routes() -> Router<AppState> {
     Router::new()
         .route("/login", post(login))
         .route("/logout", post(logout))
@@ -33,7 +33,6 @@ pub fn auth_routes(state: AppState) -> Router<AppState> {
         .route("/oauth/github/callback", get(github_callback))
         .route("/oauth/discord", get(discord_oauth))
         .route("/oauth/discord/callback", get(discord_callback))
-        .with_state(state)
 }
 
 /// Login request
@@ -128,8 +127,7 @@ async fn login(
         .ok_or_else(|| Error::InvalidCredentials)?;
     
     // Verify password using argon2
-    let password_hash = user.password_hash.as_deref().unwrap_or_default();
-    let password_valid = verify_password(&payload.password, password_hash)?;
+    let password_valid = verify_password(&payload.password, user.password_hash.as_deref().unwrap_or_default())?;
     if !password_valid {
         return Err(Error::InvalidCredentials);
     }

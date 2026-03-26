@@ -25,7 +25,7 @@ use crate::middleware::api_key_auth::{ApiKeyAuthExtension, check_model_permissio
 
 /// Create relay routes
 /// 创建中继路由
-pub fn relay_routes(state: AppState) -> Router<AppState> {
+pub fn relay_routes() -> Router<AppState> {
     Router::new()
         // Chat completions
         .route("/chat/completions", post(chat_completions_handler))
@@ -36,8 +36,6 @@ pub fn relay_routes(state: AppState) -> Router<AppState> {
         // Models
         .route("/models", get(list_models_handler))
         .route("/models/:id", get(get_model_handler))
-        
-        .with_state(state)
 }
 
 /// Chat completions endpoint
@@ -172,7 +170,7 @@ async fn handle_streaming_completion(
     tokio::spawn(async move {
         let mut stream_error: Option<crate::error::Error> = None;
         
-        while let Some(chunk_result) = futures_util::StreamExt::next(&mut streaming_response).await {
+        while let Some(chunk_result) = streaming_response.next().await {
             match chunk_result {
                 Ok(chunk) => {
                     let data = serde_json::to_string(&chunk).unwrap_or_default();
@@ -226,7 +224,7 @@ async fn handle_streaming_completion(
     // Convert to SSE stream
     let sse_stream = tokio_stream::wrappers::ReceiverStream::new(rx);
     
-    let body = Body::from_stream(futures_util::StreamExt::map(sse_stream, |result| {
+    let body = Body::from_stream(sse_stream.map(|result| {
         match result {
             Ok(data) => Ok::<_, Infallible>(data),
             Err(e) => Ok(format!("data: {{\"error\": \"{}\"}}\n\n", e)),
@@ -354,7 +352,7 @@ pub async fn list_models_handler(
     // Get model list (filtered by token permissions)
     let model_list = relay.list_models_filtered(tenant_id, token).await?;
     
-    Ok(Json(serde_json::to_value(model_list).map_err(|e| Error::Validation(format!("Failed to serialize model list: {}", e)))?))
+    Ok(Json(serde_json::to_value(model_list)?))
 }
 
 /// Get model details endpoint
@@ -383,7 +381,7 @@ pub async fn get_model_handler(
     // Get model details
     let model = relay.get_model(&model_id, tenant_id).await?;
     
-    Ok(Json(serde_json::to_value(model).map_err(|e| Error::Validation(format!("Failed to serialize model: {}", e)))?))
+    Ok(Json(serde_json::to_value(model)?))
 }
 
 // ============================================================================

@@ -20,6 +20,8 @@ use tokio_stream::wrappers::ReceiverStream;
 use tracing::{info, warn, error, debug};
 use serde_json::{json, Value};
 use chrono::Utc;
+use futures_util::TryStreamExt;
+use http_body::Body as HttpBody;
 
 use crate::config::Config;
 use crate::error::{Error, Result};
@@ -34,6 +36,7 @@ use self::types::{
 
 /// Relay service for forwarding requests to AI providers
 /// 用于将请求转发到 AI 提供商的中继服务
+#[derive(Clone)]
 pub struct RelayService {
     /// Application configuration
     /// 应用程序配置
@@ -49,6 +52,11 @@ pub struct RelayService {
 }
 
 impl RelayService {
+    /// Get a reference to the database
+    /// 获取数据库引用
+    pub fn db(&self) -> Arc<Database> {
+        self.db.clone()
+    }
     /// Create a new relay service
     /// 创建新的中继服务
     pub fn new(config: Arc<Config>, db: Arc<Database>) -> Self {
@@ -97,7 +105,7 @@ impl RelayService {
     
     /// Weighted random selection of a channel
     /// 渠道的加权随机选择
-    fn weighted_random_select(&self, channels: &[&Channel]) -> Result<&Channel> {
+    fn weighted_random_select<'a>(&self, channels: &[&'a Channel]) -> Result<&'a Channel> {
         if channels.is_empty() {
             return Err(Error::Provider("No channels to select from".to_string()));
         }
@@ -268,11 +276,11 @@ impl RelayService {
         
         // Create stream from SSE response
         let (tx, rx) = tokio::sync::mpsc::channel(100);
-        let stream = response.bytes_stream();
         
         tokio::spawn(async move {
             use futures_util::StreamExt;
-            let mut stream = stream;
+            // Read response body as bytes stream using reqwest's built-in streaming
+            let mut stream = response.bytes_stream();
             
             while let Some(chunk_result) = stream.next().await {
                 match chunk_result {
@@ -401,9 +409,9 @@ impl RelayService {
                     _ => "user",
                 },
                 "content": msg.content.as_ref().map(|c| match c {
-                    MessageContent::Text(t) => t,
+                    MessageContent::Text(t) => t.as_str(),
                     MessageContent::Parts(parts) => {
-                        parts.iter().filter_map(|p| p.text.as_ref()).next().unwrap_or(&"".to_string())
+                        parts.iter().filter_map(|p| p.text.as_deref()).next().unwrap_or("")
                     }
                 })
             })

@@ -22,7 +22,7 @@ use crate::db;
 
 /// Create channel routes
 /// 创建渠道路由
-pub fn channel_routes(state: AppState) -> Router<AppState> {
+pub fn channel_routes() -> Router<AppState> {
     Router::new()
         .route("/", get(list_channels))
         .route("/", post(create_channel))
@@ -33,7 +33,6 @@ pub fn channel_routes(state: AppState) -> Router<AppState> {
         .route("/:id/enable", post(enable_channel))
         .route("/:id/disable", post(disable_channel))
         .route("/batch", post(batch_operation))
-        .with_state(state)
 }
 
 /// Channel list query parameters

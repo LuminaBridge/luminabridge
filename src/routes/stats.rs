@@ -22,7 +22,7 @@ use crate::auth::TokenClaims;
 
 /// Create stats routes
 /// 创建统计路由
-pub fn stats_routes(state: AppState) -> Router<AppState> {
+pub fn stats_routes() -> Router<AppState> {
     Router::new()
         .route("/realtime", get(get_realtime_stats))
         .route("/usage", get(get_usage_stats))
@@ -30,7 +30,6 @@ pub fn stats_routes(state: AppState) -> Router<AppState> {
         .route("/models", get(get_model_stats))
         .route("/billing", get(get_billing_stats))
         .route("/dashboard", get(get_dashboard_stats))
-        .with_state(state)
 }
 
 /// Usage stats query parameters

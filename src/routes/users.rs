@@ -23,7 +23,7 @@ pub use crate::db::UserListParams;
 
 /// Create user routes
 /// 创建用户路由
-pub fn user_routes(state: AppState) -> Router<AppState> {
+pub fn user_routes() -> Router<AppState> {
     Router::new()
         .route("/", get(list_users))
         .route("/:id", get(get_user))
@@ -32,7 +32,6 @@ pub fn user_routes(state: AppState) -> Router<AppState> {
         .route("/invite", post(invite_user))
         .route("/:id/usage", get(get_user_usage))
         .route("/me", get(get_current_user))
-        .with_state(state)
 }
 
 /// User detail DTO
@@ -171,7 +170,7 @@ async fn list_users(
     let users = state.db.find_users_by_tenant(tenant_id, &params).await?;
     let total = state.db.count_users(tenant_id, &params).await?;
     
-    let user_dtos: Vec<UserDetailDTO> = users.iter().map(UserDetailDTO::from).collect();
+    let user_dtos: Vec<UserDetailDTO> = users.into_iter().map(|user| UserDetailDTO::from(&user)).collect();
     
     Ok(ResponseJson(SuccessResponse::new(user_dtos)
         .with_meta(crate::types::ResponseMeta::for_pagination(

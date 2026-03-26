@@ -94,6 +94,11 @@ pub enum Error {
     #[error("Validation error: {0}")]
     Validation(String),
 
+    /// JSON serialization errors
+    /// JSON 序列化错误
+    #[error("JSON error: {0}")]
+    Json(#[from] serde_json::Error),
+
     /// Cache errors
     /// 缓存错误
     #[error("Cache error: {0}")]
@@ -108,6 +113,11 @@ pub enum Error {
     /// API 令牌配额超出
     #[error("Token quota exceeded")]
     TokenQuotaExceeded,
+
+    /// Network errors
+    /// 网络错误
+    #[error("Network error: {0}")]
+    Network(String),
 
     /// Streaming quota exceeded (tokens used, limit)
     /// 流式配额超出（已用令牌数，限制）
@@ -148,9 +158,11 @@ impl Error {
             Error::Provider(_) => 502,
             Error::Internal(_) => 500,
             Error::Validation(_) => 400,
+            Error::Json(_) => 500,
             Error::Cache(_) => 500,
             Error::TokenNotFound => 404,
             Error::TokenQuotaExceeded => 429,
+            Error::Network(_) => 502,
             Error::QuotaExceeded(_, _) => 429,
             Error::ModelNotPermitted => 403,
             Error::IpNotAllowed => 403,
@@ -214,9 +226,11 @@ impl Error {
             Error::Provider(_) => "PROVIDER_ERROR",
             Error::Internal(_) => "INTERNAL_ERROR",
             Error::Validation(_) => "VALIDATION_ERROR",
+            Error::Json(_) => "JSON_ERROR",
             Error::Cache(_) => "CACHE_ERROR",
             Error::TokenNotFound => "TOKEN_NOT_FOUND",
             Error::TokenQuotaExceeded => "TOKEN_QUOTA_EXCEEDED",
+            Error::Network(_) => "NETWORK_ERROR",
             Error::QuotaExceeded(_, _) => "QUOTA_EXCEEDED",
             Error::ModelNotPermitted => "MODEL_NOT_PERMITTED",
             Error::IpNotAllowed => "IP_NOT_ALLOWED",

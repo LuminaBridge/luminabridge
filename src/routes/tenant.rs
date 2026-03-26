@@ -22,13 +22,12 @@ use crate::auth::TokenClaims;
 
 /// Create tenant routes
 /// 创建租户路由
-pub fn tenant_routes(state: AppState) -> Router<AppState> {
+pub fn tenant_routes() -> Router<AppState> {
     Router::new()
         .route("/", get(get_tenant))
         .route("/", put(update_tenant))
         .route("/usage", get(get_tenant_usage))
         .route("/members", get(get_tenant_members))
-        .with_state(state)
 }
 
 /// Tenant DTO
